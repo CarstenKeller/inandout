@@ -35,6 +35,17 @@ export const initDatabase = (): Promise<void> => {
     try { db.execSync("ALTER TABLE categories ADD COLUMN keywords TEXT NOT NULL DEFAULT ''"); } catch {}
 
     db.execSync(`
+      CREATE TABLE IF NOT EXISTS accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#607D8B',
+        iban TEXT
+      )
+    `);
+    try { db.execSync("ALTER TABLE transactions ADD COLUMN accountId INTEGER REFERENCES accounts(id)"); } catch {}
+    try { db.execSync("ALTER TABLE import_sessions ADD COLUMN account_id INTEGER REFERENCES accounts(id)"); } catch {}
+
+    db.execSync(`
       CREATE TABLE IF NOT EXISTS import_sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         filename TEXT NOT NULL,

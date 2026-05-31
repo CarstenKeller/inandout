@@ -1,3 +1,10 @@
+export interface Account {
+  id: number;
+  name: string;
+  color: string;
+  iban?: string;
+}
+
 export interface Category {
   id: number;
   name: string;
@@ -17,6 +24,9 @@ export interface Transaction {
   categoryId: number;
   categoryName?: string;
   categoryColor?: string;
+  accountId?: number;
+  accountName?: string;
+  accountColor?: string;
   type: 'income' | 'expense';
   importHash?: string;
   isManual: number;
@@ -58,6 +68,7 @@ export type TransactionsStackParamList = {
     typeFilter?: 'income' | 'expense';
     filterCategoryId?: number;
     filterMonth?: string;
+    filterAccountId?: number;
   } | undefined;
   AddTransaction: { transaction?: Transaction; defaultManual?: boolean } | undefined;
 };
@@ -81,6 +92,7 @@ export interface ImportSessionRecord {
   auto_count: number;
   assigned_count: number;
   skipped_count: number;
+  account_id: number | null;
 }
 
 export interface ImportItemRecord {

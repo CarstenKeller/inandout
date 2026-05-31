@@ -5,8 +5,8 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { getTransactions, deleteTransaction, getCategories } from '../database/queries';
-import { Transaction, Category, TransactionsStackParamList } from '../types';
+import { getTransactions, deleteTransaction, getCategories, getAccounts } from '../database/queries';
+import { Transaction, Category, Account, TransactionsStackParamList } from '../types';
 
 const DARK = {
   bg: '#121212', surface: '#1E1E1E', card: '#2C2C2C',
@@ -28,7 +28,9 @@ const monthLabel = (ym: string) => {
 export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [filterCategoryId, setFilterCategoryId] = useState<number | null>(null);
+  const [filterAccountId, setFilterAccountId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [filterMonth, setFilterMonth] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +44,7 @@ export default function TransactionsScreen() {
     if (p.typeFilter)        setFilterType(p.typeFilter);
     if (p.filterCategoryId)  setFilterCategoryId(p.filterCategoryId);
     if (p.filterMonth)       setFilterMonth(p.filterMonth);
+    if (p.filterAccountId)   setFilterAccountId(p.filterAccountId);
   }, [route.params]);
 
   const load = useCallback(async () => {
@@ -53,6 +56,7 @@ export default function TransactionsScreen() {
       ]);
       setTransactions(txs.filter(t => t.isManual === 0));
       setCategories(cats);
+      setAccounts(getAccounts());
     } finally {
       setLoading(false);
     }
@@ -62,7 +66,8 @@ export default function TransactionsScreen() {
 
   const filtered = transactions
     .filter(t => filterType === 'all' || t.type === filterType)
-    .filter(t => filterCategoryId === null || t.categoryId === filterCategoryId);
+    .filter(t => filterCategoryId === null || t.categoryId === filterCategoryId)
+    .filter(t => filterAccountId === null || t.accountId === filterAccountId);
 
   const confirmDelete = (item: Transaction) => {
     Alert.alert('Löschen', `"${item.description}" wirklich löschen?`, [
@@ -84,10 +89,12 @@ export default function TransactionsScreen() {
     setFilterType('all');
     setFilterCategoryId(null);
     setFilterMonth(null);
+    setFilterAccountId(null);
   };
 
   const activeFilterCat = categories.find(c => c.id === filterCategoryId);
-  const hasActiveFilter = filterType !== 'all' || filterCategoryId !== null || filterMonth !== null;
+  const activeFilterAccount = accounts.find(a => a.id === filterAccountId);
+  const hasActiveFilter = filterType !== 'all' || filterCategoryId !== null || filterMonth !== null || filterAccountId !== null;
 
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={DARK.accent} size="large" /></View>;
@@ -95,7 +102,7 @@ export default function TransactionsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Active-filter banner (shown when navigated from Dashboard) */}
+      {/* Active-filter banner (shown when navigated from Dashboard or filter active) */}
       {hasActiveFilter && (
         <View style={styles.filterBanner}>
           <Text style={styles.filterBannerText} numberOfLines={1}>
@@ -103,6 +110,7 @@ export default function TransactionsScreen() {
               filterMonth && monthLabel(filterMonth),
               activeFilterCat && activeFilterCat.name,
               filterType === 'income' ? '↑ Einnahmen' : filterType === 'expense' ? '↓ Ausgaben' : null,
+              activeFilterAccount && activeFilterAccount.name,
             ].filter(Boolean).join(' · ')}
           </Text>
           <TouchableOpacity onPress={clearFilters} style={styles.filterBannerClear}>
@@ -111,14 +119,14 @@ export default function TransactionsScreen() {
         </View>
       )}
 
-      {/* Type + category filter bar */}
+      {/* Filter bar: type + category + account */}
       <View style={styles.filterBarOuter}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBarContent}>
           <TouchableOpacity
-            style={[styles.filterChip, filterType === 'all' && filterCategoryId === null && styles.filterChipActive]}
-            onPress={() => { setFilterType('all'); setFilterCategoryId(null); }}
+            style={[styles.filterChip, filterType === 'all' && filterCategoryId === null && filterAccountId === null && styles.filterChipActive]}
+            onPress={() => { setFilterType('all'); setFilterCategoryId(null); setFilterAccountId(null); }}
           >
-            <Text style={[styles.filterChipText, filterType === 'all' && filterCategoryId === null && styles.filterChipTextActive]}>
+            <Text style={[styles.filterChipText, filterType === 'all' && filterCategoryId === null && filterAccountId === null && styles.filterChipTextActive]}>
               Alle
             </Text>
           </TouchableOpacity>
@@ -151,6 +159,23 @@ export default function TransactionsScreen() {
               </Text>
             </TouchableOpacity>
           ))}
+          {accounts.length > 1 && (
+            <>
+              <View style={styles.filterSep} />
+              {accounts.map(acc => (
+                <TouchableOpacity
+                  key={acc.id}
+                  style={[styles.filterChip, filterAccountId === acc.id && { backgroundColor: acc.color + '33', borderColor: acc.color }]}
+                  onPress={() => setFilterAccountId(p => p === acc.id ? null : acc.id)}
+                >
+                  <View style={[styles.filterDot, { backgroundColor: acc.color }]} />
+                  <Text style={[styles.filterChipText, filterAccountId === acc.id && { color: acc.color, fontWeight: '700' }]}>
+                    {acc.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
         </ScrollView>
       </View>
 
@@ -174,8 +199,14 @@ export default function TransactionsScreen() {
               <View style={[styles.typeDot, { backgroundColor: item.type === 'income' ? DARK.income : DARK.expense }]} />
               <View style={styles.info}>
                 <Text style={styles.desc} numberOfLines={filterCategoryId ? 3 : 1}>{item.description}</Text>
-                <Text style={styles.meta}>{item.date} · {item.categoryName ?? 'Ohne Kategorie'}</Text>
+                <Text style={styles.meta}>
+                  {item.date} · {item.categoryName ?? 'Ohne Kategorie'}
+                  {accounts.length > 1 && item.accountName ? ` · ${item.accountName}` : ''}
+                </Text>
               </View>
+              {accounts.length > 1 && item.accountColor && (
+                <View style={[styles.accountBadge, { backgroundColor: item.accountColor + '33', borderColor: item.accountColor }]} />
+              )}
               <Text style={[styles.amount, { color: item.type === 'income' ? DARK.income : DARK.expense }]}>
                 {item.type === 'expense' ? '-' : '+'}{formatCurrency(item.amount)}
               </Text>
@@ -217,5 +248,6 @@ const styles = StyleSheet.create({
   info: { flex: 1 },
   desc: { color: DARK.text, fontSize: 14, fontWeight: '500', lineHeight: 20 },
   meta: { color: DARK.subtext, fontSize: 12, marginTop: 3 },
+  accountBadge: { width: 8, height: 8, borderRadius: 4, borderWidth: 1, marginRight: 6, marginTop: 5 },
   amount: { fontSize: 14, fontWeight: '600', marginLeft: 10 },
 });

@@ -1,17 +1,42 @@
 import { db } from './database';
 import {
-  Transaction, Category, MonthlyBalance, CategoryBalance,
+  Account, Transaction, Category, MonthlyBalance, CategoryBalance,
   ImportedTransaction, ImportSessionRecord, ImportItemRecord,
 } from '../types';
+
+// ── Accounts ─────────────────────────────────────────────────────────────────
+
+export const getAccounts = (): Account[] =>
+  db.getAllSync<Account>('SELECT * FROM accounts ORDER BY id');
+
+export const createAccount = (name: string, color: string, iban?: string): number => {
+  const r = db.runSync(
+    'INSERT INTO accounts (name, color, iban) VALUES (?, ?, ?)',
+    [name, color, iban ?? null]
+  );
+  return r.lastInsertRowId;
+};
+
+export const getUnlinkedTransactionCount = (): number =>
+  db.getFirstSync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM transactions WHERE accountId IS NULL AND isManual = 0"
+  )?.count ?? 0;
+
+export const migrateTransactionsToAccount = (accountId: number): void => {
+  db.runSync(
+    'UPDATE transactions SET accountId = ? WHERE accountId IS NULL AND isManual = 0',
+    [accountId]
+  );
+};
 
 // ── Import sessions ──────────────────────────────────────────────────────────
 
 export const createImportSession = (
-  filename: string, fileHash: string, totalCount: number
+  filename: string, fileHash: string, totalCount: number, accountId: number | null = null
 ): number => {
   const r = db.runSync(
-    'INSERT INTO import_sessions (filename, file_hash, imported_at, total_count) VALUES (?, ?, ?, ?)',
-    [filename, fileHash, new Date().toISOString(), totalCount]
+    'INSERT INTO import_sessions (filename, file_hash, imported_at, total_count, account_id) VALUES (?, ?, ?, ?, ?)',
+    [filename, fileHash, new Date().toISOString(), totalCount, accountId]
   );
   return r.lastInsertRowId;
 };
@@ -32,7 +57,6 @@ export const deleteImportSession = (id: number): void => {
 
 export const deleteImportSessionWithTransactions = (id: number): void => {
   db.withTransactionSync(() => {
-    // Delete transactions whose importHash matches any item in this session
     db.runSync(
       `DELETE FROM transactions WHERE importHash IN (
          SELECT import_hash FROM import_items WHERE session_id = ?
@@ -64,6 +88,11 @@ export const bulkInsertImportItems = (
   sessionId: number,
   items: Array<{ tx: ImportedTransaction; status: 'pending' | 'auto'; categoryId: number | null }>
 ): void => {
+  const session = db.getFirstSync<{ account_id: number | null }>(
+    'SELECT account_id FROM import_sessions WHERE id = ?', [sessionId]
+  );
+  const accountId = session?.account_id ?? null;
+
   db.withTransactionSync(() => {
     for (const { tx, status, categoryId } of items) {
       db.runSync(
@@ -72,8 +101,8 @@ export const bulkInsertImportItems = (
       );
       if (categoryId !== null && !hashExists(tx.importHash)) {
         db.runSync(
-          'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
-          [tx.date, tx.amount, tx.description, categoryId, tx.type, tx.importHash, 'once']
+          'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence, accountId) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)',
+          [tx.date, tx.amount, tx.description, categoryId, tx.type, tx.importHash, 'once', accountId]
         );
       }
     }
@@ -97,9 +126,13 @@ export const assignImportItem = (
       [status, categoryId ?? null, item.id]
     );
     if (categoryId !== null && !hashExists(item.import_hash)) {
+      const accountId = db.getFirstSync<{ account_id: number | null }>(
+        'SELECT account_id FROM import_sessions WHERE id = ?',
+        [item.session_id]
+      )?.account_id ?? null;
       db.runSync(
-        'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
-        [item.date, item.amount, item.description, categoryId, item.type, item.import_hash, 'once']
+        'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence, accountId) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)',
+        [item.date, item.amount, item.description, categoryId, item.type, item.import_hash, 'once', accountId]
       );
     }
   });
@@ -138,20 +171,20 @@ export const updateCategoryKeywords = (id: number, keywords: string): Promise<vo
 };
 
 export const getTransactions = (month?: string): Promise<Transaction[]> => {
+  const base = `
+    SELECT t.*, c.name as categoryName, c.color as categoryColor,
+           a.name as accountName, a.color as accountColor
+    FROM transactions t
+    LEFT JOIN categories c ON t.categoryId = c.id
+    LEFT JOIN accounts a ON t.accountId = a.id
+  `;
   const rows = month
     ? db.getAllSync<Transaction>(
-        `SELECT t.*, c.name as categoryName, c.color as categoryColor
-         FROM transactions t
-         LEFT JOIN categories c ON t.categoryId = c.id
-         WHERE strftime('%Y-%m', t.date) = ?
-         ORDER BY t.isManual ASC, t.date DESC`,
+        base + "WHERE strftime('%Y-%m', t.date) = ? ORDER BY t.isManual ASC, t.date DESC",
         [month]
       )
     : db.getAllSync<Transaction>(
-        `SELECT t.*, c.name as categoryName, c.color as categoryColor
-         FROM transactions t
-         LEFT JOIN categories c ON t.categoryId = c.id
-         ORDER BY t.isManual ASC, t.date DESC`
+        base + 'ORDER BY t.isManual ASC, t.date DESC'
       );
   return Promise.resolve(rows);
 };
