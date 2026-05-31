@@ -96,26 +96,25 @@ export default function ImportReviewScreen() {
     if (pending.length === 0) return;
     const [current, ...rest] = pending;
 
-    // Save keyword changes to DB before writing transaction
-    if (catId !== null && kwChanges[catId] !== undefined) {
-      await updateCategoryKeywords(catId, kwChanges[catId]);
-      setKwChanges(prev => { const n = { ...prev }; delete n[catId]; return n; });
+    // Save ALL pending keyword changes — not just the current category.
+    // A user may have modified keywords for category A, then switched to B;
+    // both changes must be persisted regardless of which category is assigned.
+    const pendingKw = { ...kwChanges };
+    setKwChanges({});
+    for (const [id, kw] of Object.entries(pendingKw)) {
+      await updateCategoryKeywords(Number(id), kw);
     }
 
     // Write to DB immediately
     assignImportItem(current, catId !== null ? 'assigned' : 'skipped', catId);
 
-    // Re-match remaining with updated keywords
+    // Re-match remaining with updated keywords (DB is now up-to-date)
     let newPending = rest;
     let autoGain = 0;
 
     if (catId !== null && rest.length > 0) {
       const freshCats = await getCategories();
-      const mergedCats = freshCats.map(c => ({
-        ...c,
-        keywords: kwChanges[c.id] !== undefined ? kwChanges[c.id] : (c.keywords ?? ''),
-      }));
-      const rematched = matchAll(rest.map(toTx), mergedCats);
+      const rematched = matchAll(rest.map(toTx), freshCats);
 
       for (const r of rematched) {
         if (r.categoryId !== null) {
