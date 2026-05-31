@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
 import { getCategories, addTransaction, updateTransaction } from '../database/queries';
 import { Category, Recurrence, TransactionsStackParamList } from '../types';
 
@@ -40,25 +39,37 @@ export default function AddTransactionScreen() {
 
   const isEditing = !!existing;
 
-  // Reload categories whenever screen gains focus (catches add/delete)
   useFocusEffect(useCallback(() => {
     getCategories().then(setCategories);
   }, []));
 
+  // Only show categories matching the selected type
+  const visibleCategories = categories.filter(
+    cat => cat.type === 'both' || cat.type === type
+  );
+
+  const handleTypeChange = (newType: 'income' | 'expense') => {
+    setType(newType);
+    // Deselect category if it doesn't match new type
+    if (categoryId) {
+      const cat = categories.find(c => c.id === categoryId);
+      if (cat && cat.type !== 'both' && cat.type !== newType) {
+        setCategoryId(null);
+      }
+    }
+  };
+
+  const currentMonth = parseInt(date.split('-')[1] ?? '1', 10);
+  const setMonth = (m: number) => {
+    const year = date.split('-')[0] ?? String(new Date().getFullYear());
+    setDate(`${year}-${String(m).padStart(2, '0')}-01`);
+  };
+
   const handleSave = async () => {
     const parsed = parseFloat(amount.replace(',', '.'));
-    if (isNaN(parsed) || parsed <= 0) {
-      Alert.alert('Fehler', 'Bitte einen gültigen Betrag eingeben');
-      return;
-    }
-    if (!description.trim()) {
-      Alert.alert('Fehler', 'Bitte eine Beschreibung eingeben');
-      return;
-    }
-    if (!categoryId) {
-      Alert.alert('Fehler', 'Bitte eine Kategorie wählen');
-      return;
-    }
+    if (isNaN(parsed) || parsed <= 0) { Alert.alert('Fehler', 'Bitte einen gültigen Betrag eingeben'); return; }
+    if (!description.trim()) { Alert.alert('Fehler', 'Bitte eine Beschreibung eingeben'); return; }
+    if (!categoryId) { Alert.alert('Fehler', 'Bitte eine Kategorie wählen'); return; }
 
     const data = {
       date,
@@ -80,18 +91,21 @@ export default function AddTransactionScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
+
+      {/* Type */}
       <View style={styles.typeRow}>
         {(['expense', 'income'] as const).map(t => (
           <TouchableOpacity
             key={t}
             style={[styles.typeBtn, type === t && { backgroundColor: t === 'income' ? DARK.income : DARK.expense }]}
-            onPress={() => setType(t)}
+            onPress={() => handleTypeChange(t)}
           >
             <Text style={styles.typeBtnText}>{t === 'income' ? 'Einnahme' : 'Ausgabe'}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
+      {/* Amount */}
       <Text style={styles.label}>Betrag (€)</Text>
       <TextInput
         style={styles.input} value={amount} onChangeText={setAmount}
@@ -99,6 +113,7 @@ export default function AddTransactionScreen() {
         keyboardType="decimal-pad" returnKeyType="done"
       />
 
+      {/* Description */}
       <Text style={styles.label}>Beschreibung / Kommentar</Text>
       <TextInput
         style={[styles.input, { minHeight: 60 }]}
@@ -107,58 +122,32 @@ export default function AddTransactionScreen() {
         multiline
       />
 
-      {isManual && recurrence === 'yearly' ? (
-        <>
-          <Text style={styles.label}>Monat der Zahlung</Text>
-          <View style={styles.monthGrid}>
-            {MONTH_NAMES.map((name, i) => {
-              const m = i + 1;
-              const currentMonth = parseInt(date.split('-')[1] ?? '1', 10);
-              const active = currentMonth === m;
-              return (
-                <TouchableOpacity
-                  key={m}
-                  style={[styles.monthChip, active && styles.monthChipActive]}
-                  onPress={() => {
-                    const year = date.split('-')[0] ?? new Date().getFullYear().toString();
-                    setDate(`${year}-${String(m).padStart(2, '0')}-01`);
-                  }}
-                >
-                  <Text style={[styles.monthChipText, active && styles.monthChipTextActive]}>
-                    {name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+      {/* Category — filtered by type */}
+      <Text style={styles.label}>
+        Kategorie{' '}
+        <Text style={styles.labelHint}>
+          ({type === 'income' ? 'Einnahmen' : 'Ausgaben'})
+        </Text>
+      </Text>
+      {visibleCategories.length === 0
+        ? <Text style={styles.noCategories}>Keine passenden Kategorien</Text>
+        : (
+          <View style={styles.catGrid}>
+            {visibleCategories.map(cat => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.catChip, categoryId === cat.id && { borderColor: cat.color, borderWidth: 2 }]}
+                onPress={() => setCategoryId(cat.id)}
+              >
+                <View style={[styles.catDot, { backgroundColor: cat.color }]} />
+                <Text style={styles.catText}>{cat.name}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        </>
-      ) : (
-        <>
-          <Text style={styles.label}>Datum</Text>
-          <TextInput
-            style={styles.input} value={date} onChangeText={setDate}
-            placeholder="YYYY-MM-DD" placeholderTextColor={DARK.subtext}
-          />
-        </>
-      )}
+        )
+      }
 
-      <Text style={styles.label}>Kategorie</Text>
-      {categories.length === 0 && (
-        <Text style={styles.noCategories}>Keine Kategorien vorhanden</Text>
-      )}
-      <View style={styles.catGrid}>
-        {categories.map(cat => (
-          <TouchableOpacity
-            key={cat.id}
-            style={[styles.catChip, categoryId === cat.id && { borderColor: cat.color, borderWidth: 2 }]}
-            onPress={() => setCategoryId(cat.id)}
-          >
-            <View style={[styles.catDot, { backgroundColor: cat.color }]} />
-            <Text style={styles.catText}>{cat.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
+      {/* Manual toggle */}
       <View style={styles.manualRow}>
         <View style={styles.manualInfo}>
           <Text style={styles.manualLabel}>Manuelle Schätzung</Text>
@@ -172,8 +161,9 @@ export default function AddTransactionScreen() {
         />
       </View>
 
+      {/* Recurrence + month picker directly below (manual only) */}
       {isManual && (
-        <>
+        <View style={styles.manualBlock}>
           <Text style={styles.label}>Wiederholung</Text>
           <View style={styles.recurrenceGrid}>
             {RECURRENCE_OPTIONS.map(opt => (
@@ -188,6 +178,40 @@ export default function AddTransactionScreen() {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Month picker directly below when yearly */}
+          {recurrence === 'yearly' && (
+            <>
+              <Text style={styles.label}>Monat der Zahlung</Text>
+              <View style={styles.monthGrid}>
+                {MONTH_NAMES.map((name, i) => {
+                  const m = i + 1;
+                  return (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.monthChip, currentMonth === m && styles.monthChipActive]}
+                      onPress={() => setMonth(m)}
+                    >
+                      <Text style={[styles.monthChipText, currentMonth === m && styles.monthChipTextActive]}>
+                        {name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+      )}
+
+      {/* Date field — hidden for manual+yearly (month picker handles it) */}
+      {!(isManual && recurrence === 'yearly') && (
+        <>
+          <Text style={styles.label}>Datum</Text>
+          <TextInput
+            style={styles.input} value={date} onChangeText={setDate}
+            placeholder="YYYY-MM-DD" placeholderTextColor={DARK.subtext}
+          />
         </>
       )}
 
@@ -206,6 +230,7 @@ const styles = StyleSheet.create({
   typeBtn: { flex: 1, backgroundColor: DARK.surface, padding: 14, borderRadius: 10, alignItems: 'center' },
   typeBtnText: { color: DARK.text, fontWeight: '600' },
   label: { color: DARK.subtext, fontSize: 12, marginBottom: 6, marginTop: 14 },
+  labelHint: { color: DARK.subtext, fontSize: 11, fontStyle: 'italic' },
   input: { backgroundColor: DARK.surface, color: DARK.text, borderRadius: 10, padding: 14, fontSize: 16 },
   noCategories: { color: DARK.subtext, fontSize: 13, fontStyle: 'italic', marginBottom: 8 },
   catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
@@ -223,23 +248,28 @@ const styles = StyleSheet.create({
   manualInfo: { flex: 1 },
   manualLabel: { color: DARK.manual, fontWeight: '600', fontSize: 14 },
   manualHint: { color: DARK.subtext, fontSize: 12, marginTop: 2 },
-  recurrenceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  monthChip: {
-    width: '22%', paddingVertical: 10, borderRadius: 8, alignItems: 'center',
-    backgroundColor: DARK.surface, borderWidth: 1, borderColor: 'transparent',
+  manualBlock: {
+    backgroundColor: DARK.surface, borderRadius: 12,
+    padding: 14, marginTop: 8,
+    borderWidth: 1, borderColor: '#3D2E00',
   },
-  monthChipActive: { borderColor: DARK.accent, backgroundColor: '#2A1F4A' },
-  monthChipText: { color: DARK.subtext, fontSize: 13, fontWeight: '500' },
-  monthChipTextActive: { color: DARK.accent, fontWeight: '700' },
+  recurrenceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   recurrenceChip: {
-    backgroundColor: DARK.surface, borderRadius: 20,
+    backgroundColor: DARK.card, borderRadius: 20,
     paddingVertical: 8, paddingHorizontal: 14,
     borderWidth: 1, borderColor: 'transparent',
   },
   recurrenceChipActive: { borderColor: DARK.manual, backgroundColor: '#3D2E00' },
   recurrenceText: { color: DARK.subtext, fontSize: 13 },
   recurrenceTextActive: { color: DARK.manual, fontWeight: '600' },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  monthChip: {
+    width: '22%', paddingVertical: 10, borderRadius: 8, alignItems: 'center',
+    backgroundColor: DARK.card, borderWidth: 1, borderColor: 'transparent',
+  },
+  monthChipActive: { borderColor: DARK.accent, backgroundColor: '#2A1F4A' },
+  monthChipText: { color: DARK.subtext, fontSize: 13, fontWeight: '500' },
+  monthChipTextActive: { color: DARK.accent, fontWeight: '700' },
   saveBtn: {
     backgroundColor: DARK.accent, borderRadius: 12, padding: 16,
     alignItems: 'center', marginTop: 24, marginBottom: 32,

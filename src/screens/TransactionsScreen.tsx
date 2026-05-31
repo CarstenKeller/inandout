@@ -1,12 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity, Alert,
-  ActivityIndicator, TouchableHighlight,
+  ActivityIndicator, TouchableHighlight, ScrollView,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { getTransactions, deleteTransaction } from '../database/queries';
-import { Transaction, TransactionsStackParamList } from '../types';
+import { getTransactions, deleteTransaction, getCategories } from '../database/queries';
+import { Transaction, Category, TransactionsStackParamList } from '../types';
 
 const DARK = {
   bg: '#121212', surface: '#1E1E1E', text: '#FFFFFF',
@@ -20,19 +20,27 @@ const formatCurrency = (amount: number) =>
 
 export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [filterCategoryId, setFilterCategoryId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation<NavProp>();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setTransactions(await getTransactions());
+      const [txs, cats] = await Promise.all([getTransactions(), getCategories()]);
+      setTransactions(txs);
+      setCategories(cats);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const filtered = filterCategoryId
+    ? transactions.filter(t => t.categoryId === filterCategoryId)
+    : transactions;
 
   const confirmDelete = (item: Transaction) => {
     Alert.alert('Löschen', `"${item.description}" wirklich löschen?`, [
@@ -47,10 +55,7 @@ export default function TransactionsScreen() {
   const handleLongPress = (item: Transaction) => {
     Alert.alert(item.description, undefined, [
       { text: 'Abbrechen', style: 'cancel' },
-      {
-        text: 'Bearbeiten',
-        onPress: () => navigation.navigate('AddTransaction', { transaction: item }),
-      },
+      { text: 'Bearbeiten', onPress: () => navigation.navigate('AddTransaction', { transaction: item }) },
       { text: 'Löschen', style: 'destructive', onPress: () => confirmDelete(item) },
     ]);
   };
@@ -61,10 +66,50 @@ export default function TransactionsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Category filter bar */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterBar}
+        contentContainerStyle={styles.filterBarContent}
+      >
+        <TouchableOpacity
+          style={[styles.filterChip, filterCategoryId === null && styles.filterChipActive]}
+          onPress={() => setFilterCategoryId(null)}
+        >
+          <Text style={[styles.filterChipText, filterCategoryId === null && styles.filterChipTextActive]}>
+            Alle
+          </Text>
+        </TouchableOpacity>
+        {categories.map(cat => (
+          <TouchableOpacity
+            key={cat.id}
+            style={[
+              styles.filterChip,
+              filterCategoryId === cat.id && { backgroundColor: cat.color + '33', borderColor: cat.color },
+            ]}
+            onPress={() => setFilterCategoryId(prev => prev === cat.id ? null : cat.id)}
+          >
+            <View style={[styles.filterDot, { backgroundColor: cat.color }]} />
+            <Text style={[
+              styles.filterChipText,
+              filterCategoryId === cat.id && { color: cat.color, fontWeight: '700' },
+            ]}>
+              {cat.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* Transaction list */}
       <FlatList
-        data={transactions}
+        data={filtered}
         keyExtractor={item => String(item.id)}
-        ListEmptyComponent={<Text style={styles.empty}>Keine Buchungen vorhanden</Text>}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {filterCategoryId ? 'Keine Buchungen in dieser Kategorie' : 'Keine Buchungen vorhanden'}
+          </Text>
+        }
         renderItem={({ item }) => {
           const manual = item.isManual === 1;
           return (
@@ -100,6 +145,7 @@ export default function TransactionsScreen() {
           );
         }}
       />
+
       <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('AddTransaction', {})}
@@ -113,27 +159,25 @@ export default function TransactionsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: DARK.bg },
   center: { flex: 1, backgroundColor: DARK.bg, justifyContent: 'center', alignItems: 'center' },
-  fab: {
-    position: 'absolute', bottom: 24, right: 24, backgroundColor: '#BB86FC',
-    width: 56, height: 56, borderRadius: 28, justifyContent: 'center',
-    alignItems: 'center', elevation: 6,
+  filterBar: { maxHeight: 52, borderBottomWidth: 1, borderBottomColor: DARK.surface },
+  filterBarContent: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, flexDirection: 'row' },
+  filterChip: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 16, backgroundColor: DARK.surface, borderWidth: 1, borderColor: 'transparent',
   },
-  fabText: { color: '#000', fontSize: 28, fontWeight: 'bold', lineHeight: 32 },
+  filterChipActive: { backgroundColor: '#BB86FC33', borderColor: '#BB86FC' },
+  filterChipText: { color: DARK.subtext, fontSize: 13 },
+  filterChipTextActive: { color: '#BB86FC', fontWeight: '700' },
+  filterDot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
   empty: { color: DARK.subtext, textAlign: 'center', marginTop: 40 },
   item: {
     marginHorizontal: 12, marginTop: 8, borderRadius: 10,
     backgroundColor: DARK.surface, overflow: 'hidden',
   },
-  manualItem: {
-    borderWidth: 1,
-    borderColor: DARK.manual,
-    borderStyle: 'dashed',
-  },
+  manualItem: { borderWidth: 1, borderColor: DARK.manual, borderStyle: 'dashed' },
   manualBadge: {
-    backgroundColor: '#3D2E00',
-    paddingHorizontal: 10, paddingVertical: 3,
-    alignSelf: 'flex-start',
-    borderBottomRightRadius: 8,
+    backgroundColor: '#3D2E00', paddingHorizontal: 10, paddingVertical: 3,
+    alignSelf: 'flex-start', borderBottomRightRadius: 8,
   },
   manualBadgeText: { color: DARK.manual, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   itemRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
@@ -142,4 +186,10 @@ const styles = StyleSheet.create({
   desc: { color: DARK.text, fontSize: 14, fontWeight: '500' },
   meta: { color: DARK.subtext, fontSize: 12, marginTop: 2 },
   amount: { fontSize: 14, fontWeight: '600' },
+  fab: {
+    position: 'absolute', bottom: 24, right: 24, backgroundColor: '#BB86FC',
+    width: 56, height: 56, borderRadius: 28, justifyContent: 'center',
+    alignItems: 'center', elevation: 6,
+  },
+  fabText: { color: '#000', fontSize: 28, fontWeight: 'bold', lineHeight: 32 },
 });
