@@ -23,9 +23,17 @@ export const initDatabase = (): Promise<void> => {
         categoryId INTEGER,
         type TEXT NOT NULL,
         importHash TEXT UNIQUE,
+        isManual INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (categoryId) REFERENCES categories(id)
       )
     `);
+
+    // Migration: add isManual to existing DBs
+    try {
+      db.execSync('ALTER TABLE transactions ADD COLUMN isManual INTEGER NOT NULL DEFAULT 0');
+    } catch {
+      // Column already exists
+    }
 
     const defaultCategories: [string, string, string, string][] = [
       ['Gehalt', '#4CAF50', 'briefcase', 'income'],

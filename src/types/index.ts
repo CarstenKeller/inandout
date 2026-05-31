@@ -16,6 +16,7 @@ export interface Transaction {
   categoryColor?: string;
   type: 'income' | 'expense';
   importHash?: string;
+  isManual: number; // 1 = manuelle Schätzung, 0 = importiert/normal
 }
 
 export interface ImportedTransaction {
@@ -40,3 +41,8 @@ export interface CategoryBalance {
   total: number;
   count: number;
 }
+
+export type TransactionsStackParamList = {
+  TransactionsList: undefined;
+  AddTransaction: { transaction?: Transaction } | undefined;
+};

@@ -9,9 +9,10 @@ import TransactionsScreen from '../screens/TransactionsScreen';
 import AddTransactionScreen from '../screens/AddTransactionScreen';
 import ImportScreen from '../screens/ImportScreen';
 import CategoriesScreen from '../screens/CategoriesScreen';
+import { TransactionsStackParamList } from '../types';
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<TransactionsStackParamList>();
 
 const DARK_NAV = {
   background: '#1E1E1E',
@@ -38,7 +39,13 @@ function TransactionsStack() {
       }}
     >
       <Stack.Screen name="TransactionsList" component={TransactionsScreen} options={{ title: 'Buchungen' }} />
-      <Stack.Screen name="AddTransaction" component={AddTransactionScreen} options={{ title: 'Buchung hinzufügen' }} />
+      <Stack.Screen
+        name="AddTransaction"
+        component={AddTransactionScreen}
+        options={({ route }) =>
+          ({ title: route.params?.transaction ? 'Buchung bearbeiten' : 'Buchung hinzufügen' })
+        }
+      />
     </Stack.Navigator>
   );
 }

@@ -1,25 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { getCategories, addTransaction } from '../database/queries';
-import { Category } from '../types';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { getCategories, addTransaction, updateTransaction } from '../database/queries';
+import { Category, TransactionsStackParamList } from '../types';
 
 const DARK = {
   bg: '#121212', surface: '#1E1E1E', card: '#2C2C2C',
   text: '#FFFFFF', subtext: '#AAAAAA', accent: '#BB86FC',
-  income: '#4CAF50', expense: '#F44336',
+  income: '#4CAF50', expense: '#F44336', manual: '#FFB74D',
 };
+
+type RouteProps = RouteProp<TransactionsStackParamList, 'AddTransaction'>;
 
 export default function AddTransactionScreen() {
   const navigation = useNavigation();
+  const route = useRoute<RouteProps>();
+  const existing = route.params?.transaction;
+
   const [categories, setCategories] = useState<Category[]>([]);
-  const [type, setType] = useState<'income' | 'expense'>('expense');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [type, setType] = useState<'income' | 'expense'>(existing?.type ?? 'expense');
+  const [amount, setAmount] = useState(existing ? String(existing.amount).replace('.', ',') : '');
+  const [description, setDescription] = useState(existing?.description ?? '');
+  const [date, setDate] = useState(existing?.date ?? new Date().toISOString().split('T')[0]);
+  const [categoryId, setCategoryId] = useState<number | null>(existing?.categoryId ?? null);
+  const [isManual, setIsManual] = useState((existing?.isManual ?? 1) === 1);
+
+  const isEditing = !!existing;
 
   useEffect(() => { getCategories().then(setCategories); }, []);
 
@@ -38,7 +46,20 @@ export default function AddTransactionScreen() {
       return;
     }
 
-    await addTransaction({ date, amount: parsed, description: description.trim(), categoryId, type });
+    const data = {
+      date,
+      amount: parsed,
+      description: description.trim(),
+      categoryId,
+      type,
+      isManual: isManual ? 1 : 0,
+    };
+
+    if (isEditing) {
+      await updateTransaction(existing.id, data);
+    } else {
+      await addTransaction(data);
+    }
     navigation.goBack();
   };
 
@@ -63,10 +84,12 @@ export default function AddTransactionScreen() {
         keyboardType="decimal-pad" returnKeyType="done"
       />
 
-      <Text style={styles.label}>Beschreibung</Text>
+      <Text style={styles.label}>Beschreibung / Kommentar</Text>
       <TextInput
-        style={styles.input} value={description} onChangeText={setDescription}
-        placeholder="z.B. Supermarkt" placeholderTextColor={DARK.subtext}
+        style={[styles.input, { minHeight: 60 }]}
+        value={description} onChangeText={setDescription}
+        placeholder="z.B. Geschätzte Miete Q3" placeholderTextColor={DARK.subtext}
+        multiline
       />
 
       <Text style={styles.label}>Datum</Text>
@@ -92,8 +115,25 @@ export default function AddTransactionScreen() {
         ))}
       </View>
 
+      <View style={styles.manualRow}>
+        <View style={styles.manualInfo}>
+          <Text style={styles.manualLabel}>Manuelle Schätzung</Text>
+          <Text style={styles.manualHint}>
+            Markiert als Platzhalter – wird später durch CSV/PDF-Import ersetzt
+          </Text>
+        </View>
+        <Switch
+          value={isManual}
+          onValueChange={setIsManual}
+          trackColor={{ false: DARK.surface, true: DARK.manual }}
+          thumbColor={isManual ? '#fff' : '#888'}
+        />
+      </View>
+
       <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-        <Text style={styles.saveBtnText}>Buchung speichern</Text>
+        <Text style={styles.saveBtnText}>
+          {isEditing ? 'Änderungen speichern' : 'Buchung speichern'}
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -114,9 +154,16 @@ const styles = StyleSheet.create({
   },
   catDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   catText: { color: DARK.text, fontSize: 13 },
+  manualRow: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: DARK.surface,
+    borderRadius: 12, padding: 14, marginTop: 20, gap: 12,
+  },
+  manualInfo: { flex: 1 },
+  manualLabel: { color: DARK.manual, fontWeight: '600', fontSize: 14 },
+  manualHint: { color: DARK.subtext, fontSize: 12, marginTop: 2 },
   saveBtn: {
     backgroundColor: DARK.accent, borderRadius: 12, padding: 16,
-    alignItems: 'center', marginTop: 28, marginBottom: 24,
+    alignItems: 'center', marginTop: 24, marginBottom: 32,
   },
   saveBtnText: { color: '#000', fontWeight: '700', fontSize: 16 },
 });

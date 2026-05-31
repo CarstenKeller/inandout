@@ -36,9 +36,11 @@ export const getTransactions = (month?: string): Promise<Transaction[]> => {
   return Promise.resolve(rows);
 };
 
-export const addTransaction = (transaction: Omit<Transaction, 'id'>): Promise<number> => {
+export const addTransaction = (
+  transaction: Omit<Transaction, 'id' | 'categoryName' | 'categoryColor'>
+): Promise<number> => {
   const result = db.runSync(
-    'INSERT INTO transactions (date, amount, description, categoryId, type, importHash) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [
       transaction.date,
       transaction.amount,
@@ -46,9 +48,29 @@ export const addTransaction = (transaction: Omit<Transaction, 'id'>): Promise<nu
       transaction.categoryId,
       transaction.type,
       transaction.importHash ?? null,
+      transaction.isManual ?? 0,
     ]
   );
   return Promise.resolve(result.lastInsertRowId);
+};
+
+export const updateTransaction = (
+  id: number,
+  transaction: Omit<Transaction, 'id' | 'categoryName' | 'categoryColor'>
+): Promise<void> => {
+  db.runSync(
+    'UPDATE transactions SET date=?, amount=?, description=?, categoryId=?, type=?, isManual=? WHERE id=?',
+    [
+      transaction.date,
+      transaction.amount,
+      transaction.description,
+      transaction.categoryId,
+      transaction.type,
+      transaction.isManual ?? 0,
+      id,
+    ]
+  );
+  return Promise.resolve();
 };
 
 export const deleteTransaction = (id: number): Promise<void> => {
@@ -109,7 +131,7 @@ export const bulkInsertTransactions = (
     for (const t of transactions) {
       if (!hashExists(t.importHash)) {
         db.runSync(
-          'INSERT INTO transactions (date, amount, description, categoryId, type, importHash) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual) VALUES (?, ?, ?, ?, ?, ?, 0)',
           [t.date, t.amount, t.description, categoryId, t.type, t.importHash]
         );
         inserted++;
