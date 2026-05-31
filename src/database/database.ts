@@ -32,6 +32,7 @@ export const initDatabase = (): Promise<void> => {
     // Migrations for existing DBs
     try { db.execSync("ALTER TABLE transactions ADD COLUMN isManual INTEGER NOT NULL DEFAULT 0"); } catch {}
     try { db.execSync("ALTER TABLE transactions ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'once'"); } catch {}
+    try { db.execSync("ALTER TABLE categories ADD COLUMN keywords TEXT NOT NULL DEFAULT ''"); } catch {}
 
     // Remove duplicate categories, keep lowest id per name
     db.execSync(

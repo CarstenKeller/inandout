@@ -6,14 +6,19 @@ export const getCategories = (): Promise<Category[]> =>
 
 export const addCategory = (category: Omit<Category, 'id'>): Promise<number> => {
   const result = db.runSync(
-    'INSERT INTO categories (name, color, icon, type) VALUES (?, ?, ?, ?)',
-    [category.name, category.color, category.icon, category.type]
+    'INSERT INTO categories (name, color, icon, type, keywords) VALUES (?, ?, ?, ?, ?)',
+    [category.name, category.color, category.icon, category.type, category.keywords ?? '']
   );
   return Promise.resolve(result.lastInsertRowId);
 };
 
 export const deleteCategory = (id: number): Promise<void> => {
   db.runSync('DELETE FROM categories WHERE id = ?', [id]);
+  return Promise.resolve();
+};
+
+export const updateCategoryKeywords = (id: number, keywords: string): Promise<void> => {
+  db.runSync('UPDATE categories SET keywords=? WHERE id=?', [keywords, id]);
   return Promise.resolve();
 };
 
@@ -138,17 +143,16 @@ export const hashExists = (hash: string): boolean => {
   return (row?.count ?? 0) > 0;
 };
 
-export const bulkInsertTransactions = (
-  transactions: ImportedTransaction[],
-  categoryId: number
+export const bulkInsertCategorized = (
+  items: Array<{ tx: ImportedTransaction; categoryId: number }>
 ): Promise<number> => {
   let inserted = 0;
   db.withTransactionSync(() => {
-    for (const t of transactions) {
-      if (!hashExists(t.importHash)) {
+    for (const { tx, categoryId } of items) {
+      if (!hashExists(tx.importHash)) {
         db.runSync(
           'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
-          [t.date, t.amount, t.description, categoryId, t.type, t.importHash, 'once']
+          [tx.date, tx.amount, tx.description, categoryId, tx.type, tx.importHash, 'once']
         );
         inserted++;
       }

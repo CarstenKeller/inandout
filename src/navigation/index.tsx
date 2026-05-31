@@ -8,12 +8,14 @@ import DashboardScreen from '../screens/DashboardScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
 import AddTransactionScreen from '../screens/AddTransactionScreen';
 import ImportScreen from '../screens/ImportScreen';
+import ImportReviewScreen from '../screens/ImportReviewScreen';
 import CategoriesScreen from '../screens/CategoriesScreen';
 import PlanningScreen from '../screens/PlanningScreen';
-import { TransactionsStackParamList } from '../types';
+import { TransactionsStackParamList, ImportStackParamList } from '../types';
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator<TransactionsStackParamList>();
+const TxStack = createNativeStackNavigator<TransactionsStackParamList>();
+const ImpStack = createNativeStackNavigator<ImportStackParamList>();
 
 const DARK_NAV = {
   background: '#1E1E1E',
@@ -32,23 +34,32 @@ const TAB_ICONS: Record<string, { focused: keyof typeof Ionicons.glyphMap; defau
   Categories:  { focused: 'pricetags',   default: 'pricetags-outline' },
 };
 
+const stackScreenOptions = {
+  headerStyle: { backgroundColor: DARK_NAV.header },
+  headerTintColor: DARK_NAV.headerText,
+};
+
 function TransactionsStack() {
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: { backgroundColor: DARK_NAV.header },
-        headerTintColor: DARK_NAV.headerText,
-      }}
-    >
-      <Stack.Screen name="TransactionsList" component={TransactionsScreen} options={{ title: 'Buchungen' }} />
-      <Stack.Screen
+    <TxStack.Navigator screenOptions={stackScreenOptions}>
+      <TxStack.Screen name="TransactionsList" component={TransactionsScreen} options={{ title: 'Buchungen' }} />
+      <TxStack.Screen
         name="AddTransaction"
         component={AddTransactionScreen}
         options={({ route }) =>
           ({ title: route.params?.transaction ? 'Buchung bearbeiten' : 'Buchung hinzufügen' })
         }
       />
-    </Stack.Navigator>
+    </TxStack.Navigator>
+  );
+}
+
+function ImportStack() {
+  return (
+    <ImpStack.Navigator screenOptions={stackScreenOptions}>
+      <ImpStack.Screen name="ImportMain" component={ImportScreen} options={{ title: 'Importieren' }} />
+      <ImpStack.Screen name="ImportReview" component={ImportReviewScreen} options={{ title: 'Kategorisieren' }} />
+    </ImpStack.Navigator>
   );
 }
 
@@ -69,11 +80,11 @@ export default function Navigation() {
           headerTintColor: DARK_NAV.headerText,
         })}
       >
-        <Tab.Screen name="Dashboard"    component={DashboardScreen}    options={{ title: 'Übersicht' }} />
-        <Tab.Screen name="Transactions" component={TransactionsStack}   options={{ title: 'Buchungen', headerShown: false }} />
-        <Tab.Screen name="Planning"     component={PlanningScreen}      options={{ title: 'Planung' }} />
-        <Tab.Screen name="Import"       component={ImportScreen}        options={{ title: 'Importieren' }} />
-        <Tab.Screen name="Categories"   component={CategoriesScreen}    options={{ title: 'Kategorien' }} />
+        <Tab.Screen name="Dashboard"    component={DashboardScreen}   options={{ title: 'Übersicht' }} />
+        <Tab.Screen name="Transactions" component={TransactionsStack}  options={{ title: 'Buchungen',   headerShown: false }} />
+        <Tab.Screen name="Planning"     component={PlanningScreen}     options={{ title: 'Planung' }} />
+        <Tab.Screen name="Import"       component={ImportStack}        options={{ title: 'Importieren', headerShown: false }} />
+        <Tab.Screen name="Categories"   component={CategoriesScreen}   options={{ title: 'Kategorien' }} />
       </Tab.Navigator>
     </NavigationContainer>
   );

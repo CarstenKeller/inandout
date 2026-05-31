@@ -4,6 +4,7 @@ export interface Category {
   color: string;
   icon: string;
   type: 'income' | 'expense' | 'both';
+  keywords: string;
 }
 
 export type Recurrence = 'once' | 'monthly' | 'quarterly' | 'yearly';
@@ -55,4 +56,9 @@ export interface PeriodBalance {
 export type TransactionsStackParamList = {
   TransactionsList: undefined;
   AddTransaction: { transaction?: Transaction } | undefined;
+};
+
+export type ImportStackParamList = {
+  ImportMain: undefined;
+  ImportReview: { autoCount: number; reviewCount: number };
 };
