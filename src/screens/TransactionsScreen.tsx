@@ -15,8 +15,19 @@ const DARK = {
 
 type NavProp = NativeStackNavigationProp<TransactionsStackParamList, 'TransactionsList'>;
 
+const RECURRENCE_LABELS: Record<string, string> = {
+  monthly: 'Monatlich', quarterly: 'Quartalsweise', yearly: 'Jährlich', once: '',
+};
+
 const formatCurrency = (amount: number) =>
   amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+
+function monthlyEquivalent(amount: number, recurrence: string): number {
+  if (recurrence === 'monthly')   return amount;
+  if (recurrence === 'quarterly') return amount / 3;
+  if (recurrence === 'yearly')    return amount / 12;
+  return 0; // 'once' not included in average
+}
 
 export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -41,6 +52,17 @@ export default function TransactionsScreen() {
   const filtered = filterCategoryId
     ? transactions.filter(t => t.categoryId === filterCategoryId)
     : transactions;
+
+  // Monthly average for manual transactions in current view
+  const manualFiltered = filtered.filter(t => t.isManual === 1);
+  const avgIncome  = manualFiltered
+    .filter(t => t.type === 'income')
+    .reduce((s, t) => s + monthlyEquivalent(t.amount, t.recurrence), 0);
+  const avgExpense = manualFiltered
+    .filter(t => t.type === 'expense')
+    .reduce((s, t) => s + monthlyEquivalent(t.amount, t.recurrence), 0);
+  const avgBalance = avgIncome - avgExpense;
+  const showAvg = manualFiltered.some(t => t.recurrence !== 'once');
 
   const confirmDelete = (item: Transaction) => {
     Alert.alert('Löschen', `"${item.description}" wirklich löschen?`, [
@@ -101,6 +123,22 @@ export default function TransactionsScreen() {
         ))}
       </ScrollView>
 
+      {/* Monthly average summary */}
+      {showAvg && (
+        <View style={styles.summaryBar}>
+          <Text style={styles.summaryTitle}>Ø / Monat (Schätzungen)</Text>
+          <View style={styles.summaryRow}>
+            <Text style={[styles.summaryVal, { color: DARK.income }]}>+{formatCurrency(avgIncome)}</Text>
+            <Text style={styles.summarySep}>·</Text>
+            <Text style={[styles.summaryVal, { color: DARK.expense }]}>-{formatCurrency(avgExpense)}</Text>
+            <Text style={styles.summarySep}>·</Text>
+            <Text style={[styles.summaryVal, { color: avgBalance >= 0 ? DARK.income : DARK.expense, fontWeight: '700' }]}>
+              {formatCurrency(avgBalance)}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Transaction list */}
       <FlatList
         data={filtered}
@@ -132,6 +170,9 @@ export default function TransactionsScreen() {
                     <Text style={styles.desc} numberOfLines={1}>{item.description}</Text>
                     <Text style={styles.meta}>
                       {item.date} · {item.categoryName ?? 'Ohne Kategorie'}
+                      {manual && item.recurrence && item.recurrence !== 'once'
+                        ? ` · ${RECURRENCE_LABELS[item.recurrence]}`
+                        : ''}
                     </Text>
                   </View>
                   <Text style={[styles.amount, {
@@ -169,6 +210,15 @@ const styles = StyleSheet.create({
   filterChipText: { color: DARK.subtext, fontSize: 13 },
   filterChipTextActive: { color: '#BB86FC', fontWeight: '700' },
   filterDot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
+  summaryBar: {
+    backgroundColor: DARK.surface, marginHorizontal: 12, marginTop: 8,
+    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+    borderLeftWidth: 3, borderLeftColor: DARK.manual,
+  },
+  summaryTitle: { color: DARK.subtext, fontSize: 11, marginBottom: 4 },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  summaryVal: { fontSize: 13 },
+  summarySep: { color: DARK.subtext, fontSize: 12 },
   empty: { color: DARK.subtext, textAlign: 'center', marginTop: 40 },
   item: {
     marginHorizontal: 12, marginTop: 8, borderRadius: 10,
