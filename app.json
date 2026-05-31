@@ -18,9 +18,6 @@
       },
       "package": "de.carstenkeller.inandout"
     },
-    "plugins": [
-      "expo-sqlite",
-      "expo-document-picker"
-    ]
+    "plugins": []
   }
 }
