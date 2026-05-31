@@ -54,7 +54,11 @@ export interface PeriodBalance {
 }
 
 export type TransactionsStackParamList = {
-  TransactionsList: { typeFilter?: 'income' | 'expense' } | undefined;
+  TransactionsList: {
+    typeFilter?: 'income' | 'expense';
+    filterCategoryId?: number;
+    filterMonth?: string;
+  } | undefined;
   AddTransaction: { transaction?: Transaction; defaultManual?: boolean } | undefined;
 };
 

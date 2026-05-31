@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { getMonthlyBalance, getCategoryBalances } from '../database/queries';
 import { MonthlyBalance, CategoryBalance } from '../types';
 
@@ -24,11 +24,23 @@ const getCurrentMonth = () => {
 };
 
 export default function DashboardScreen() {
+  const navigation = useNavigation<any>();
   const [balance, setBalance] = useState<MonthlyBalance | null>(null);
   const [categories, setCategories] = useState<CategoryBalance[]>([]);
   const [month, setMonth] = useState(getCurrentMonth());
   const [typeFilter, setTypeFilter] = useState<'income' | 'expense' | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const openCategory = (cat: CategoryBalance) => {
+    navigation.navigate('Transactions', {
+      screen: 'TransactionsList',
+      params: {
+        filterCategoryId: cat.categoryId,
+        filterMonth: month,
+        typeFilter: typeFilter ?? undefined,
+      },
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,12 +123,17 @@ export default function DashboardScreen() {
         <Text style={styles.emptyText}>Keine Buchungen in diesem Monat</Text>
       )}
       {categories.map(cat => (
-        <View key={cat.categoryId} style={styles.categoryRow}>
+        <TouchableOpacity
+          key={cat.categoryId}
+          style={styles.categoryRow}
+          onPress={() => openCategory(cat)}
+          activeOpacity={0.7}
+        >
           <View style={[styles.dot, { backgroundColor: cat.categoryColor }]} />
           <Text style={styles.catName}>{cat.categoryName}</Text>
-          <Text style={styles.catCount}>{cat.count} Buchungen</Text>
+          <Text style={styles.catCount}>{cat.count} Buchung{cat.count !== 1 ? 'en' : ''}</Text>
           <Text style={[styles.catAmount, { color: DARK.expense }]}>{formatCurrency(cat.total)}</Text>
-        </View>
+        </TouchableOpacity>
       ))}
     </ScrollView>
   );
