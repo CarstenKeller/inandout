@@ -194,35 +194,38 @@ export default function ImportScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Account selector */}
-      <Text style={styles.sectionLabel}>Konto für Import</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.accountRow}
-      >
-        {accounts.map(acc => (
-          <TouchableOpacity
-            key={acc.id}
-            style={[
-              styles.accountChip,
-              selectedAccountId === acc.id && { borderColor: acc.color, backgroundColor: acc.color + '22' },
-            ]}
-            onPress={() => setSelectedAccountId(acc.id)}
-          >
-            <View style={[styles.accountDot, { backgroundColor: acc.color }]} />
-            <Text style={[
-              styles.accountChipText,
-              selectedAccountId === acc.id && { color: acc.color, fontWeight: '700' },
-            ]}>
-              {acc.name}
-            </Text>
+      {/* Account selector — compact single row */}
+      <View style={styles.accountBar}>
+        <Text style={styles.accountBarLabel}>Konto</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.accountBarScroll}
+          contentContainerStyle={styles.accountBarContent}
+        >
+          {accounts.map(acc => (
+            <TouchableOpacity
+              key={acc.id}
+              style={[
+                styles.accountChip,
+                selectedAccountId === acc.id && { borderColor: acc.color, backgroundColor: acc.color + '22' },
+              ]}
+              onPress={() => setSelectedAccountId(acc.id)}
+            >
+              <View style={[styles.accountDot, { backgroundColor: acc.color }]} />
+              <Text style={[
+                styles.accountChipText,
+                selectedAccountId === acc.id && { color: acc.color, fontWeight: '700' },
+              ]}>
+                {acc.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={styles.accountChipAdd} onPress={() => setShowNewAccountModal(true)}>
+            <Text style={styles.accountChipAddText}>+ Neu</Text>
           </TouchableOpacity>
-        ))}
-        <TouchableOpacity style={styles.accountChipAdd} onPress={() => setShowNewAccountModal(true)}>
-          <Text style={styles.accountChipAddText}>+ Neu</Text>
-        </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </View>
 
       <TouchableOpacity style={styles.pickBtn} onPress={pickFile} disabled={loading}>
         {loading
@@ -351,20 +354,23 @@ export default function ImportScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: DARK.bg, padding: 16 },
-  sectionLabel: {
-    color: DARK.subtext, fontSize: 11, fontWeight: '600',
-    marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5,
+  accountBar: {
+    flexDirection: 'row', alignItems: 'center', marginBottom: 12, height: 36,
   },
-  accountRow: { flexDirection: 'row', gap: 8, paddingBottom: 14, alignItems: 'center' },
+  accountBarLabel: {
+    color: DARK.subtext, fontSize: 12, fontWeight: '600', marginRight: 10, flexShrink: 0,
+  },
+  accountBarScroll: { flex: 1 },
+  accountBarContent: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   accountChip: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 16, backgroundColor: DARK.surface, borderWidth: 1, borderColor: 'transparent',
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 14, backgroundColor: DARK.surface, borderWidth: 1, borderColor: 'transparent',
   },
-  accountDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  accountDot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
   accountChipText: { color: DARK.subtext, fontSize: 13 },
   accountChipAdd: {
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 16, backgroundColor: DARK.surface, borderWidth: 1, borderColor: DARK.accent + '66',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 14, backgroundColor: DARK.surface, borderWidth: 1, borderColor: DARK.accent + '66',
   },
   accountChipAddText: { color: DARK.accent, fontSize: 13 },
   pickBtn: {

@@ -23,10 +23,16 @@ export const getUnlinkedTransactionCount = (): number =>
   )?.count ?? 0;
 
 export const migrateTransactionsToAccount = (accountId: number): void => {
-  db.runSync(
-    'UPDATE transactions SET accountId = ? WHERE accountId IS NULL AND isManual = 0',
-    [accountId]
-  );
+  db.withTransactionSync(() => {
+    db.runSync(
+      'UPDATE transactions SET accountId = ? WHERE accountId IS NULL AND isManual = 0',
+      [accountId]
+    );
+    db.runSync(
+      'UPDATE import_sessions SET account_id = ? WHERE account_id IS NULL',
+      [accountId]
+    );
+  });
 };
 
 // ── Import sessions ──────────────────────────────────────────────────────────
