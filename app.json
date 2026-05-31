@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "InAndOut",
+    "slug": "inandout",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#121212"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#121212"
+      },
+      "package": "de.carstenkeller.inandout"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-document-picker"
+    ]
+  }
+}
