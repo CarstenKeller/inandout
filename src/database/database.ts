@@ -46,18 +46,22 @@ export const initDatabase = (): Promise<void> => {
       ['Sonstiges', '#9E9E9E', 'ellipsis-horizontal', 'both'],
     ];
 
-    // Remove duplicate categories, keep oldest per name (safe for custom categories)
-    db.execSync(`
-      DELETE FROM categories
-      WHERE id NOT IN (SELECT MIN(id) FROM categories GROUP BY name)
-    `);
+    // Remove duplicates, keep lowest id per name
+    db.execSync(
+      'DELETE FROM categories WHERE id NOT IN (SELECT MIN(id) FROM categories GROUP BY name)'
+    );
 
-    // Insert missing defaults only
+    // Insert defaults only if name doesn't exist yet
+    const existingNames = new Set(
+      db.getAllSync<{ name: string }>('SELECT name FROM categories').map(r => r.name)
+    );
     for (const [name, color, icon, type] of defaultCategories) {
-      db.runSync(
-        'INSERT OR IGNORE INTO categories (name, color, icon, type) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = ?)',
-        [name, color, icon, type, name]
-      );
+      if (!existingNames.has(name)) {
+        db.runSync(
+          'INSERT INTO categories (name, color, icon, type) VALUES (?, ?, ?, ?)',
+          [name, color, icon, type]
+        );
+      }
     }
   });
 
