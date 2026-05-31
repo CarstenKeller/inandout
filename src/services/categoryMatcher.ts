@@ -9,13 +9,21 @@ export function matchAll(transactions: ImportedTransaction[], categories: Catego
   return transactions.map(tx => {
     const text = tx.description.toLowerCase();
     for (const cat of categories) {
-      if (!cat.keywords) continue;
-      const kws = cat.keywords
-        .split(',')
-        .map(k => k.trim().toLowerCase())
-        .filter(k => k.length >= 2);
-      if (kws.some(kw => text.includes(kw))) {
-        return { tx, categoryId: cat.id };
+      // Keyword match
+      if (cat.keywords) {
+        const kws = cat.keywords
+          .split(',')
+          .map(k => k.trim().toLowerCase())
+          .filter(k => k.length >= 2);
+        if (kws.some(kw => text.includes(kw))) return { tx, categoryId: cat.id };
+      }
+      // Amount rule match (exact, ±0.01 tolerance for floating point)
+      if (cat.amount_rules) {
+        const amounts = cat.amount_rules
+          .split(',')
+          .map(a => parseFloat(a.trim()))
+          .filter(n => !isNaN(n));
+        if (amounts.some(a => Math.abs(a - tx.amount) < 0.01)) return { tx, categoryId: cat.id };
       }
     }
     return { tx, categoryId: null };

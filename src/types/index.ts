@@ -12,6 +12,7 @@ export interface Category {
   icon: string;
   type: 'income' | 'expense' | 'both';
   keywords: string;
+  amount_rules?: string;
 }
 
 export type Recurrence = 'once' | 'monthly' | 'quarterly' | 'yearly';

@@ -7,7 +7,8 @@ import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   getCategories, addCategory,
-  updateCategoryKeywords, assignImportItem, updateSessionCounts,
+  updateCategoryKeywords, updateCategoryAmountRules,
+  assignImportItem, updateSessionCounts,
   getPendingImportItems, getImportSessions,
 } from '../database/queries';
 import {
@@ -47,6 +48,7 @@ export default function ImportReviewScreen() {
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
   const [kwChanges, setKwChanges] = useState<Record<number, string>>({});
   const [kwInput, setKwInput] = useState('');
+  const [amtRuleChanges, setAmtRuleChanges] = useState<Record<number, string>>({});
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
@@ -90,19 +92,66 @@ export default function ImportReviewScreen() {
     }));
   };
 
+  // ── Amount rules helpers ──────────────────────────────────────────────────
+
+  const getAmtList = (catId: number): string[] => {
+    const raw = amtRuleChanges[catId] !== undefined
+      ? amtRuleChanges[catId]
+      : (categories.find(c => c.id === catId)?.amount_rules ?? '');
+    return raw.split(',').map(a => a.trim()).filter(Boolean);
+  };
+
+  const addAmtRule = (amount: number) => {
+    if (!selectedCatId) return;
+    const key = amount.toFixed(2);
+    const existing = getAmtList(selectedCatId);
+    if (!existing.includes(key)) {
+      setAmtRuleChanges(prev => ({
+        ...prev,
+        [selectedCatId]: [...existing, key].join(', '),
+      }));
+    }
+  };
+
+  const removeAmtRule = (key: string) => {
+    if (!selectedCatId) return;
+    setAmtRuleChanges(prev => ({
+      ...prev,
+      [selectedCatId]: getAmtList(selectedCatId).filter(a => a !== key).join(', '),
+    }));
+  };
+
   // ── Assign or skip ────────────────────────────────────────────────────────
 
   const proceed = async (catId: number | null) => {
     if (pending.length === 0) return;
     const [current, ...rest] = pending;
 
-    // Save ALL pending keyword changes — not just the current category.
-    // A user may have modified keywords for category A, then switched to B;
-    // both changes must be persisted regardless of which category is assigned.
-    const pendingKw = { ...kwChanges };
+    // Build final keyword changes, including any text still sitting in kwInput
+    // (user may have typed a keyword but not pressed + before tapping Zuordnen).
+    let finalKwChanges = { ...kwChanges };
+    const rawInput = kwInput.trim();
+    if (rawInput && catId !== null) {
+      const clean = rawInput.toLowerCase();
+      const base = finalKwChanges[catId] !== undefined
+        ? finalKwChanges[catId]
+        : (categories.find(c => c.id === catId)?.keywords ?? '');
+      const existing = base.split(',').map(k => k.trim()).filter(Boolean);
+      if (!existing.includes(clean)) {
+        finalKwChanges[catId] = [...existing, clean].join(', ');
+      }
+    }
+
+    const finalAmtChanges = { ...amtRuleChanges };
     setKwChanges({});
-    for (const [id, kw] of Object.entries(pendingKw)) {
+    setAmtRuleChanges({});
+    setKwInput('');
+
+    for (const [id, kw] of Object.entries(finalKwChanges)) {
       await updateCategoryKeywords(Number(id), kw);
+    }
+    for (const [id, rules] of Object.entries(finalAmtChanges)) {
+      await updateCategoryAmountRules(Number(id), rules);
     }
 
     // Write to DB immediately
@@ -132,7 +181,6 @@ export default function ImportReviewScreen() {
     setPending(newPending);
     setLastAutoGain(autoGain);
     setSelectedCatId(null);
-    setKwInput('');
     setShowNewCat(false);
     setNewCatName('');
   };
@@ -323,6 +371,32 @@ export default function ImportReviewScreen() {
               <Text style={styles.kwAddBtnText}>+</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Amount rules */}
+          <View style={styles.amtDivider} />
+          <Text style={styles.sublabel}>Betragsregel (für Buchungen ohne eindeutigen Text)</Text>
+          {getAmtList(selectedCatId).length > 0 && (
+            <View style={[styles.chipRow, { marginTop: 4 }]}>
+              {getAmtList(selectedCatId).map(key => (
+                <TouchableOpacity key={key} style={styles.amtChip} onPress={() => removeAmtRule(key)}>
+                  <Text style={styles.amtChipText}>
+                    {parseFloat(key).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+                  </Text>
+                  <Text style={styles.amtChipRemove}> ×</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {!getAmtList(selectedCatId).includes(current.amount.toFixed(2)) && (
+            <TouchableOpacity
+              style={styles.amtAddBtn}
+              onPress={() => addAmtRule(current.amount)}
+            >
+              <Text style={styles.amtAddBtnText}>
+                + {formatCurrency(current.amount)} als Regel hinzufügen
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -421,6 +495,23 @@ const styles = StyleSheet.create({
   },
   kwAddBtn: { backgroundColor: DARK.accent, borderRadius: 8, width: 40, alignItems: 'center', justifyContent: 'center' },
   kwAddBtnText: { color: '#000', fontSize: 20, fontWeight: '700' },
+
+  amtDivider: { height: 1, backgroundColor: DARK.card, marginVertical: 10 },
+  amtChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#3A2A00', borderRadius: 12,
+    paddingVertical: 4, paddingHorizontal: 10,
+    borderWidth: 1, borderColor: '#FFB74D',
+  },
+  amtChipText: { color: '#FFB74D', fontSize: 12 },
+  amtChipRemove: { color: '#FFB74D', fontSize: 12 },
+  amtAddBtn: {
+    alignSelf: 'flex-start', marginTop: 6,
+    backgroundColor: '#3A2A00', borderRadius: 12,
+    paddingVertical: 6, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#FFB74D',
+  },
+  amtAddBtnText: { color: '#FFB74D', fontSize: 12 },
 
   btnRow: { flexDirection: 'row', gap: 12, marginTop: 24 },
   skipBtn: { flex: 1, backgroundColor: DARK.surface, borderRadius: 12, padding: 14, alignItems: 'center' },

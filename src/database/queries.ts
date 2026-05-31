@@ -165,14 +165,19 @@ export const updateCategory = (
   category: Omit<Category, 'id'>
 ): Promise<void> => {
   db.runSync(
-    'UPDATE categories SET name=?, color=?, icon=?, type=?, keywords=? WHERE id=?',
-    [category.name, category.color, category.icon, category.type, category.keywords ?? '', id]
+    'UPDATE categories SET name=?, color=?, icon=?, type=?, keywords=?, amount_rules=? WHERE id=?',
+    [category.name, category.color, category.icon, category.type, category.keywords ?? '', category.amount_rules ?? '', id]
   );
   return Promise.resolve();
 };
 
 export const updateCategoryKeywords = (id: number, keywords: string): Promise<void> => {
   db.runSync('UPDATE categories SET keywords=? WHERE id=?', [keywords, id]);
+  return Promise.resolve();
+};
+
+export const updateCategoryAmountRules = (id: number, rules: string): Promise<void> => {
+  db.runSync('UPDATE categories SET amount_rules=? WHERE id=?', [rules, id]);
   return Promise.resolve();
 };
 

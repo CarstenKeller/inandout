@@ -79,6 +79,7 @@ export default function CategoriesScreen() {
       icon: editing?.icon ?? 'ellipsis-horizontal',
       type: form.type,
       keywords: form.keywords,
+      amount_rules: editing?.amount_rules ?? '',
     };
     if (editing) {
       await updateCategory(editing.id, data);
