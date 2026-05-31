@@ -216,26 +216,48 @@ export const getMonthlyBalance = (month: string): Promise<MonthlyBalance> => {
   });
 };
 
-export const getCategoryBalances = (month: string): Promise<CategoryBalance[]> =>
-  Promise.resolve(
-    db.getAllSync<CategoryBalance>(
-      `SELECT
-        c.id as categoryId,
-        c.name as categoryName,
-        c.color as categoryColor,
-        COALESCE(SUM(t.amount), 0) as total,
-        COUNT(t.id) as count
-       FROM categories c
-       LEFT JOIN transactions t
-         ON t.categoryId = c.id
-         AND strftime('%Y-%m', t.date) = ?
-         AND t.isManual = 0
-       GROUP BY c.id
-       HAVING count > 0
-       ORDER BY total DESC`,
-      [month]
-    )
-  );
+export const getCategoryBalances = (
+  month: string,
+  type?: 'income' | 'expense'
+): Promise<CategoryBalance[]> => {
+  const rows = type
+    ? db.getAllSync<CategoryBalance>(
+        `SELECT
+          c.id as categoryId,
+          c.name as categoryName,
+          c.color as categoryColor,
+          COALESCE(SUM(t.amount), 0) as total,
+          COUNT(t.id) as count
+         FROM categories c
+         LEFT JOIN transactions t
+           ON t.categoryId = c.id
+           AND strftime('%Y-%m', t.date) = ?
+           AND t.isManual = 0
+           AND t.type = ?
+         GROUP BY c.id
+         HAVING count > 0
+         ORDER BY total DESC`,
+        [month, type]
+      )
+    : db.getAllSync<CategoryBalance>(
+        `SELECT
+          c.id as categoryId,
+          c.name as categoryName,
+          c.color as categoryColor,
+          COALESCE(SUM(t.amount), 0) as total,
+          COUNT(t.id) as count
+         FROM categories c
+         LEFT JOIN transactions t
+           ON t.categoryId = c.id
+           AND strftime('%Y-%m', t.date) = ?
+           AND t.isManual = 0
+         GROUP BY c.id
+         HAVING count > 0
+         ORDER BY total DESC`,
+        [month]
+      );
+  return Promise.resolve(rows);
+};
 
 export const hashExists = (hash: string): boolean => {
   const row = db.getFirstSync<{ count: number }>(

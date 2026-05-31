@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { getMonthlyBalance, getCategoryBalances } from '../database/queries';
 import { MonthlyBalance, CategoryBalance } from '../types';
 
@@ -27,29 +27,22 @@ export default function DashboardScreen() {
   const [balance, setBalance] = useState<MonthlyBalance | null>(null);
   const [categories, setCategories] = useState<CategoryBalance[]>([]);
   const [month, setMonth] = useState(getCurrentMonth());
+  const [typeFilter, setTypeFilter] = useState<'income' | 'expense' | null>(null);
   const [loading, setLoading] = useState(true);
-  const navigation = useNavigation<any>();
-
-  const goToTransactions = (typeFilter: 'income' | 'expense') => {
-    navigation.navigate('Transactions', {
-      screen: 'TransactionsList',
-      params: { typeFilter },
-    });
-  };
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [b, c] = await Promise.all([
         getMonthlyBalance(month),
-        getCategoryBalances(month),
+        getCategoryBalances(month, typeFilter ?? undefined),
       ]);
       setBalance(b);
       setCategories(c);
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, typeFilter]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -91,11 +84,19 @@ export default function DashboardScreen() {
             {formatCurrency(balance.balance)}
           </Text>
           <View style={styles.row}>
-            <TouchableOpacity style={styles.halfCard} onPress={() => goToTransactions('income')} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={[styles.halfCard, typeFilter === 'income' && styles.halfCardActiveIncome]}
+              onPress={() => setTypeFilter(f => f === 'income' ? null : 'income')}
+              activeOpacity={0.7}
+            >
               <Text style={styles.subtext}>Einnahmen</Text>
               <Text style={[styles.subAmount, { color: DARK.income }]}>{formatCurrency(balance.income)}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.halfCard} onPress={() => goToTransactions('expense')} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={[styles.halfCard, typeFilter === 'expense' && styles.halfCardActiveExpense]}
+              onPress={() => setTypeFilter(f => f === 'expense' ? null : 'expense')}
+              activeOpacity={0.7}
+            >
               <Text style={styles.subtext}>Ausgaben</Text>
               <Text style={[styles.subAmount, { color: DARK.expense }]}>{formatCurrency(balance.expenses)}</Text>
             </TouchableOpacity>
@@ -103,7 +104,9 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      <Text style={styles.sectionTitle}>Kategorien</Text>
+      <Text style={styles.sectionTitle}>
+        Kategorien{typeFilter === 'income' ? ' · Einnahmen' : typeFilter === 'expense' ? ' · Ausgaben' : ''}
+      </Text>
       {categories.length === 0 && (
         <Text style={styles.emptyText}>Keine Buchungen in diesem Monat</Text>
       )}
@@ -129,7 +132,9 @@ const styles = StyleSheet.create({
   balanceTitle: { color: DARK.subtext, fontSize: 14, marginBottom: 4 },
   balanceAmount: { fontSize: 36, fontWeight: 'bold', marginBottom: 16 },
   row: { flexDirection: 'row', gap: 12 },
-  halfCard: { flex: 1, backgroundColor: DARK.card, borderRadius: 8, padding: 12 },
+  halfCard: { flex: 1, backgroundColor: DARK.card, borderRadius: 8, padding: 12, borderWidth: 2, borderColor: 'transparent' },
+  halfCardActiveIncome: { borderColor: DARK.income },
+  halfCardActiveExpense: { borderColor: DARK.expense },
   subtext: { color: DARK.subtext, fontSize: 12 },
   subAmount: { fontSize: 18, fontWeight: '600', marginTop: 4 },
   sectionTitle: { color: DARK.text, fontSize: 16, fontWeight: '600', marginBottom: 12 },
