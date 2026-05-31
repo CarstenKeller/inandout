@@ -73,7 +73,7 @@ export default function TransactionsScreen() {
               onLongPress={() => handleLongPress(item)}
               style={[styles.item, manual && styles.manualItem]}
             >
-              <>
+              <View>
                 {manual && (
                   <View style={styles.manualBadge}>
                     <Text style={styles.manualBadgeText}>SCHÄTZUNG</Text>
@@ -95,7 +95,7 @@ export default function TransactionsScreen() {
                     {item.type === 'expense' ? '-' : '+'}{formatCurrency(item.amount)}
                   </Text>
                 </View>
-              </>
+              </View>
             </TouchableHighlight>
           );
         }}
