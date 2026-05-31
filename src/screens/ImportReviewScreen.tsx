@@ -54,6 +54,8 @@ export default function ImportReviewScreen() {
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
   const [lastAutoGain, setLastAutoGain] = useState(0);
   const initialCount = useRef<number | null>(null);
+  const kwChangesRef = useRef<Record<number, string>>({});
+  const amtRuleChangesRef = useRef<Record<number, string>>({});
 
   const reload = useCallback(() => {
     const items = getPendingImportItems(sessionId);
@@ -69,8 +71,8 @@ export default function ImportReviewScreen() {
   // ── Keywords helpers ──────────────────────────────────────────────────────
 
   const getKwList = (catId: number): string[] => {
-    const raw = kwChanges[catId] !== undefined
-      ? kwChanges[catId]
+    const raw = kwChangesRef.current[catId] !== undefined
+      ? kwChangesRef.current[catId]
       : (categories.find(c => c.id === catId)?.keywords ?? '');
     return raw.split(',').map(k => k.trim()).filter(Boolean);
   };
@@ -80,23 +82,24 @@ export default function ImportReviewScreen() {
     const clean = kw.trim().toLowerCase();
     const existing = getKwList(selectedCatId);
     if (!existing.includes(clean)) {
-      setKwChanges(prev => ({ ...prev, [selectedCatId]: [...existing, clean].join(', ') }));
+      const updated = { ...kwChangesRef.current, [selectedCatId]: [...existing, clean].join(', ') };
+      kwChangesRef.current = updated;
+      setKwChanges({ ...updated });
     }
   };
 
   const removeKw = (kw: string) => {
     if (!selectedCatId) return;
-    setKwChanges(prev => ({
-      ...prev,
-      [selectedCatId]: getKwList(selectedCatId).filter(k => k !== kw).join(', '),
-    }));
+    const updated = { ...kwChangesRef.current, [selectedCatId]: getKwList(selectedCatId).filter(k => k !== kw).join(', ') };
+    kwChangesRef.current = updated;
+    setKwChanges({ ...updated });
   };
 
   // ── Amount rules helpers ──────────────────────────────────────────────────
 
   const getAmtList = (catId: number): string[] => {
-    const raw = amtRuleChanges[catId] !== undefined
-      ? amtRuleChanges[catId]
+    const raw = amtRuleChangesRef.current[catId] !== undefined
+      ? amtRuleChangesRef.current[catId]
       : (categories.find(c => c.id === catId)?.amount_rules ?? '');
     return raw.split(',').map(a => a.trim()).filter(Boolean);
   };
@@ -106,19 +109,17 @@ export default function ImportReviewScreen() {
     const key = amount.toFixed(2);
     const existing = getAmtList(selectedCatId);
     if (!existing.includes(key)) {
-      setAmtRuleChanges(prev => ({
-        ...prev,
-        [selectedCatId]: [...existing, key].join(', '),
-      }));
+      const updated = { ...amtRuleChangesRef.current, [selectedCatId]: [...existing, key].join(', ') };
+      amtRuleChangesRef.current = updated;
+      setAmtRuleChanges({ ...updated });
     }
   };
 
   const removeAmtRule = (key: string) => {
     if (!selectedCatId) return;
-    setAmtRuleChanges(prev => ({
-      ...prev,
-      [selectedCatId]: getAmtList(selectedCatId).filter(a => a !== key).join(', '),
-    }));
+    const updated = { ...amtRuleChangesRef.current, [selectedCatId]: getAmtList(selectedCatId).filter(a => a !== key).join(', ') };
+    amtRuleChangesRef.current = updated;
+    setAmtRuleChanges({ ...updated });
   };
 
   // ── Assign or skip ────────────────────────────────────────────────────────
@@ -127,9 +128,8 @@ export default function ImportReviewScreen() {
     if (pending.length === 0) return;
     const [current, ...rest] = pending;
 
-    // Build final keyword changes, including any text still sitting in kwInput
-    // (user may have typed a keyword but not pressed + before tapping Zuordnen).
-    let finalKwChanges = { ...kwChanges };
+    // Read from refs — always current regardless of React render cycle
+    const finalKwChanges = { ...kwChangesRef.current };
     const rawInput = kwInput.trim();
     if (rawInput && catId !== null) {
       const clean = rawInput.toLowerCase();
@@ -142,7 +142,11 @@ export default function ImportReviewScreen() {
       }
     }
 
-    const finalAmtChanges = { ...amtRuleChanges };
+    const finalAmtChanges = { ...amtRuleChangesRef.current };
+
+    // Clear refs and state before async work
+    kwChangesRef.current = {};
+    amtRuleChangesRef.current = {};
     setKwChanges({});
     setAmtRuleChanges({});
     setKwInput('');
@@ -157,12 +161,15 @@ export default function ImportReviewScreen() {
     // Write to DB immediately
     assignImportItem(current, catId !== null ? 'assigned' : 'skipped', catId);
 
-    // Re-match remaining with updated keywords (DB is now up-to-date)
+    // Always fetch fresh categories so the next transaction sees updated keywords
+    const freshCats = await getCategories();
+    setCategories(freshCats);
+
+    // Re-match remaining with updated keywords
     let newPending = rest;
     let autoGain = 0;
 
     if (catId !== null && rest.length > 0) {
-      const freshCats = await getCategories();
       const rematched = matchAll(rest.map(toTx), freshCats);
 
       for (const r of rematched) {
