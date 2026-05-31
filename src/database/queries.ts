@@ -17,6 +17,17 @@ export const deleteCategory = (id: number): Promise<void> => {
   return Promise.resolve();
 };
 
+export const updateCategory = (
+  id: number,
+  category: Omit<Category, 'id'>
+): Promise<void> => {
+  db.runSync(
+    'UPDATE categories SET name=?, color=?, icon=?, type=?, keywords=? WHERE id=?',
+    [category.name, category.color, category.icon, category.type, category.keywords ?? '', id]
+  );
+  return Promise.resolve();
+};
+
 export const updateCategoryKeywords = (id: number, keywords: string): Promise<void> => {
   db.runSync('UPDATE categories SET keywords=? WHERE id=?', [keywords, id]);
   return Promise.resolve();
