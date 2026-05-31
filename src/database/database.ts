@@ -24,18 +24,25 @@ export const initDatabase = (): Promise<void> => {
         type TEXT NOT NULL,
         importHash TEXT UNIQUE,
         isManual INTEGER NOT NULL DEFAULT 0,
+        recurrence TEXT NOT NULL DEFAULT 'once',
         FOREIGN KEY (categoryId) REFERENCES categories(id)
       )
     `);
 
-    // Migration: add isManual to existing DBs
-    try {
-      db.execSync('ALTER TABLE transactions ADD COLUMN isManual INTEGER NOT NULL DEFAULT 0');
-    } catch {
-      // Column already exists
-    }
+    // Migrations for existing DBs
+    try { db.execSync("ALTER TABLE transactions ADD COLUMN isManual INTEGER NOT NULL DEFAULT 0"); } catch {}
+    try { db.execSync("ALTER TABLE transactions ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'once'"); } catch {}
 
-    const defaultCategories: [string, string, string, string][] = [
+    // Remove duplicate categories, keep lowest id per name
+    db.execSync(
+      'DELETE FROM categories WHERE id NOT IN (SELECT MIN(id) FROM categories GROUP BY name)'
+    );
+
+    // Insert missing defaults
+    const existingNames = new Set(
+      db.getAllSync<{ name: string }>('SELECT name FROM categories').map(r => r.name)
+    );
+    const defaults: [string, string, string, string][] = [
       ['Gehalt', '#4CAF50', 'briefcase', 'income'],
       ['Lebensmittel', '#FF9800', 'cart', 'expense'],
       ['Miete', '#F44336', 'home', 'expense'],
@@ -45,17 +52,7 @@ export const initDatabase = (): Promise<void> => {
       ['Versicherung', '#607D8B', 'shield', 'expense'],
       ['Sonstiges', '#9E9E9E', 'ellipsis-horizontal', 'both'],
     ];
-
-    // Remove duplicates, keep lowest id per name
-    db.execSync(
-      'DELETE FROM categories WHERE id NOT IN (SELECT MIN(id) FROM categories GROUP BY name)'
-    );
-
-    // Insert defaults only if name doesn't exist yet
-    const existingNames = new Set(
-      db.getAllSync<{ name: string }>('SELECT name FROM categories').map(r => r.name)
-    );
-    for (const [name, color, icon, type] of defaultCategories) {
+    for (const [name, color, icon, type] of defaults) {
       if (!existingNames.has(name)) {
         db.runSync(
           'INSERT INTO categories (name, color, icon, type) VALUES (?, ?, ?, ?)',

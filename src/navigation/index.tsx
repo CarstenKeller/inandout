@@ -9,6 +9,7 @@ import TransactionsScreen from '../screens/TransactionsScreen';
 import AddTransactionScreen from '../screens/AddTransactionScreen';
 import ImportScreen from '../screens/ImportScreen';
 import CategoriesScreen from '../screens/CategoriesScreen';
+import PlanningScreen from '../screens/PlanningScreen';
 import { TransactionsStackParamList } from '../types';
 
 const Tab = createBottomTabNavigator();
@@ -24,10 +25,11 @@ const DARK_NAV = {
 };
 
 const TAB_ICONS: Record<string, { focused: keyof typeof Ionicons.glyphMap; default: keyof typeof Ionicons.glyphMap }> = {
-  Dashboard: { focused: 'home', default: 'home-outline' },
-  Transactions: { focused: 'list', default: 'list-outline' },
-  Import: { focused: 'cloud-upload', default: 'cloud-upload-outline' },
-  Categories: { focused: 'pricetags', default: 'pricetags-outline' },
+  Dashboard:   { focused: 'home',         default: 'home-outline' },
+  Transactions:{ focused: 'list',         default: 'list-outline' },
+  Planning:    { focused: 'calendar',     default: 'calendar-outline' },
+  Import:      { focused: 'cloud-upload', default: 'cloud-upload-outline' },
+  Categories:  { focused: 'pricetags',   default: 'pricetags-outline' },
 };
 
 function TransactionsStack() {
@@ -67,10 +69,11 @@ export default function Navigation() {
           headerTintColor: DARK_NAV.headerText,
         })}
       >
-        <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Übersicht' }} />
-        <Tab.Screen name="Transactions" component={TransactionsStack} options={{ title: 'Buchungen', headerShown: false }} />
-        <Tab.Screen name="Import" component={ImportScreen} options={{ title: 'Importieren' }} />
-        <Tab.Screen name="Categories" component={CategoriesScreen} options={{ title: 'Kategorien' }} />
+        <Tab.Screen name="Dashboard"    component={DashboardScreen}    options={{ title: 'Übersicht' }} />
+        <Tab.Screen name="Transactions" component={TransactionsStack}   options={{ title: 'Buchungen', headerShown: false }} />
+        <Tab.Screen name="Planning"     component={PlanningScreen}      options={{ title: 'Planung' }} />
+        <Tab.Screen name="Import"       component={ImportScreen}        options={{ title: 'Importieren' }} />
+        <Tab.Screen name="Categories"   component={CategoriesScreen}    options={{ title: 'Kategorien' }} />
       </Tab.Navigator>
     </NavigationContainer>
   );

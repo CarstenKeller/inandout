@@ -1,16 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch,
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 import { getCategories, addTransaction, updateTransaction } from '../database/queries';
-import { Category, TransactionsStackParamList } from '../types';
+import { Category, Recurrence, TransactionsStackParamList } from '../types';
 
 const DARK = {
   bg: '#121212', surface: '#1E1E1E', card: '#2C2C2C',
   text: '#FFFFFF', subtext: '#AAAAAA', accent: '#BB86FC',
   income: '#4CAF50', expense: '#F44336', manual: '#FFB74D',
 };
+
+const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = [
+  { value: 'once',      label: 'Einmalig' },
+  { value: 'monthly',   label: 'Monatlich' },
+  { value: 'quarterly', label: 'Quartalsweise' },
+  { value: 'yearly',    label: 'Jährlich' },
+];
 
 type RouteProps = RouteProp<TransactionsStackParamList, 'AddTransaction'>;
 
@@ -26,10 +34,14 @@ export default function AddTransactionScreen() {
   const [date, setDate] = useState(existing?.date ?? new Date().toISOString().split('T')[0]);
   const [categoryId, setCategoryId] = useState<number | null>(existing?.categoryId ?? null);
   const [isManual, setIsManual] = useState((existing?.isManual ?? 1) === 1);
+  const [recurrence, setRecurrence] = useState<Recurrence>(existing?.recurrence ?? 'monthly');
 
   const isEditing = !!existing;
 
-  useEffect(() => { getCategories().then(setCategories); }, []);
+  // Reload categories whenever screen gains focus (catches add/delete)
+  useFocusEffect(useCallback(() => {
+    getCategories().then(setCategories);
+  }, []));
 
   const handleSave = async () => {
     const parsed = parseFloat(amount.replace(',', '.'));
@@ -53,6 +65,7 @@ export default function AddTransactionScreen() {
       categoryId,
       type,
       isManual: isManual ? 1 : 0,
+      recurrence: isManual ? recurrence : 'once' as Recurrence,
     };
 
     if (isEditing) {
@@ -88,7 +101,7 @@ export default function AddTransactionScreen() {
       <TextInput
         style={[styles.input, { minHeight: 60 }]}
         value={description} onChangeText={setDescription}
-        placeholder="z.B. Geschätzte Miete Q3" placeholderTextColor={DARK.subtext}
+        placeholder="z.B. Geschätzte Miete" placeholderTextColor={DARK.subtext}
         multiline
       />
 
@@ -99,14 +112,14 @@ export default function AddTransactionScreen() {
       />
 
       <Text style={styles.label}>Kategorie</Text>
+      {categories.length === 0 && (
+        <Text style={styles.noCategories}>Keine Kategorien vorhanden</Text>
+      )}
       <View style={styles.catGrid}>
         {categories.map(cat => (
           <TouchableOpacity
             key={cat.id}
-            style={[
-              styles.catChip,
-              categoryId === cat.id && { borderColor: cat.color, borderWidth: 2 },
-            ]}
+            style={[styles.catChip, categoryId === cat.id && { borderColor: cat.color, borderWidth: 2 }]}
             onPress={() => setCategoryId(cat.id)}
           >
             <View style={[styles.catDot, { backgroundColor: cat.color }]} />
@@ -118,9 +131,7 @@ export default function AddTransactionScreen() {
       <View style={styles.manualRow}>
         <View style={styles.manualInfo}>
           <Text style={styles.manualLabel}>Manuelle Schätzung</Text>
-          <Text style={styles.manualHint}>
-            Markiert als Platzhalter – wird später durch CSV/PDF-Import ersetzt
-          </Text>
+          <Text style={styles.manualHint}>Platzhalter – später durch Import ersetzt</Text>
         </View>
         <Switch
           value={isManual}
@@ -129,6 +140,25 @@ export default function AddTransactionScreen() {
           thumbColor={isManual ? '#fff' : '#888'}
         />
       </View>
+
+      {isManual && (
+        <>
+          <Text style={styles.label}>Wiederholung</Text>
+          <View style={styles.recurrenceGrid}>
+            {RECURRENCE_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.recurrenceChip, recurrence === opt.value && styles.recurrenceChipActive]}
+                onPress={() => setRecurrence(opt.value)}
+              >
+                <Text style={[styles.recurrenceText, recurrence === opt.value && styles.recurrenceTextActive]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
 
       <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
         <Text style={styles.saveBtnText}>
@@ -146,6 +176,7 @@ const styles = StyleSheet.create({
   typeBtnText: { color: DARK.text, fontWeight: '600' },
   label: { color: DARK.subtext, fontSize: 12, marginBottom: 6, marginTop: 14 },
   input: { backgroundColor: DARK.surface, color: DARK.text, borderRadius: 10, padding: 14, fontSize: 16 },
+  noCategories: { color: DARK.subtext, fontSize: 13, fontStyle: 'italic', marginBottom: 8 },
   catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   catChip: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: DARK.surface,
@@ -161,6 +192,15 @@ const styles = StyleSheet.create({
   manualInfo: { flex: 1 },
   manualLabel: { color: DARK.manual, fontWeight: '600', fontSize: 14 },
   manualHint: { color: DARK.subtext, fontSize: 12, marginTop: 2 },
+  recurrenceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  recurrenceChip: {
+    backgroundColor: DARK.surface, borderRadius: 20,
+    paddingVertical: 8, paddingHorizontal: 14,
+    borderWidth: 1, borderColor: 'transparent',
+  },
+  recurrenceChipActive: { borderColor: DARK.manual, backgroundColor: '#3D2E00' },
+  recurrenceText: { color: DARK.subtext, fontSize: 13 },
+  recurrenceTextActive: { color: DARK.manual, fontWeight: '600' },
   saveBtn: {
     backgroundColor: DARK.accent, borderRadius: 12, padding: 16,
     alignItems: 'center', marginTop: 24, marginBottom: 32,

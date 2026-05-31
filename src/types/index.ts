@@ -6,6 +6,8 @@ export interface Category {
   type: 'income' | 'expense' | 'both';
 }
 
+export type Recurrence = 'once' | 'monthly' | 'quarterly' | 'yearly';
+
 export interface Transaction {
   id: number;
   date: string;
@@ -16,7 +18,8 @@ export interface Transaction {
   categoryColor?: string;
   type: 'income' | 'expense';
   importHash?: string;
-  isManual: number; // 1 = manuelle Schätzung, 0 = importiert/normal
+  isManual: number;
+  recurrence: Recurrence;
 }
 
 export interface ImportedTransaction {
@@ -40,6 +43,13 @@ export interface CategoryBalance {
   categoryColor: string;
   total: number;
   count: number;
+}
+
+export interface PeriodBalance {
+  label: string;
+  income: number;
+  expenses: number;
+  balance: number;
 }
 
 export type TransactionsStackParamList = {

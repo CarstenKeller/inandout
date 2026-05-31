@@ -23,7 +23,7 @@ export const getTransactions = (month?: string): Promise<Transaction[]> => {
         `SELECT t.*, c.name as categoryName, c.color as categoryColor
          FROM transactions t
          LEFT JOIN categories c ON t.categoryId = c.id
-         WHERE strftime('%Y-%m', t.date) = ?
+         WHERE strftime('%Y-%m', t.date) = ? AND t.isManual = 0
          ORDER BY t.date DESC`,
         [month]
       )
@@ -31,16 +31,28 @@ export const getTransactions = (month?: string): Promise<Transaction[]> => {
         `SELECT t.*, c.name as categoryName, c.color as categoryColor
          FROM transactions t
          LEFT JOIN categories c ON t.categoryId = c.id
+         WHERE t.isManual = 0
          ORDER BY t.date DESC`
       );
   return Promise.resolve(rows);
 };
 
+export const getManualTransactions = (): Promise<Transaction[]> =>
+  Promise.resolve(
+    db.getAllSync<Transaction>(
+      `SELECT t.*, c.name as categoryName, c.color as categoryColor
+       FROM transactions t
+       LEFT JOIN categories c ON t.categoryId = c.id
+       WHERE t.isManual = 1
+       ORDER BY t.date DESC`
+    )
+  );
+
 export const addTransaction = (
   transaction: Omit<Transaction, 'id' | 'categoryName' | 'categoryColor'>
 ): Promise<number> => {
   const result = db.runSync(
-    'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     [
       transaction.date,
       transaction.amount,
@@ -49,6 +61,7 @@ export const addTransaction = (
       transaction.type,
       transaction.importHash ?? null,
       transaction.isManual ?? 0,
+      transaction.recurrence ?? 'once',
     ]
   );
   return Promise.resolve(result.lastInsertRowId);
@@ -59,7 +72,7 @@ export const updateTransaction = (
   transaction: Omit<Transaction, 'id' | 'categoryName' | 'categoryColor'>
 ): Promise<void> => {
   db.runSync(
-    'UPDATE transactions SET date=?, amount=?, description=?, categoryId=?, type=?, isManual=? WHERE id=?',
+    'UPDATE transactions SET date=?, amount=?, description=?, categoryId=?, type=?, isManual=?, recurrence=? WHERE id=?',
     [
       transaction.date,
       transaction.amount,
@@ -67,6 +80,7 @@ export const updateTransaction = (
       transaction.categoryId,
       transaction.type,
       transaction.isManual ?? 0,
+      transaction.recurrence ?? 'once',
       id,
     ]
   );
@@ -84,7 +98,7 @@ export const getMonthlyBalance = (month: string): Promise<MonthlyBalance> => {
       COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
       COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expenses
      FROM transactions
-     WHERE strftime('%Y-%m', date) = ?`,
+     WHERE strftime('%Y-%m', date) = ? AND isManual = 0`,
     [month]
   ) ?? { income: 0, expenses: 0 };
 
@@ -106,7 +120,10 @@ export const getCategoryBalances = (month: string): Promise<CategoryBalance[]> =
         COALESCE(SUM(t.amount), 0) as total,
         COUNT(t.id) as count
        FROM categories c
-       LEFT JOIN transactions t ON t.categoryId = c.id AND strftime('%Y-%m', t.date) = ?
+       LEFT JOIN transactions t
+         ON t.categoryId = c.id
+         AND strftime('%Y-%m', t.date) = ?
+         AND t.isManual = 0
        GROUP BY c.id
        HAVING count > 0
        ORDER BY total DESC`,
@@ -131,8 +148,8 @@ export const bulkInsertTransactions = (
     for (const t of transactions) {
       if (!hashExists(t.importHash)) {
         db.runSync(
-          'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual) VALUES (?, ?, ?, ?, ?, ?, 0)',
-          [t.date, t.amount, t.description, categoryId, t.type, t.importHash]
+          'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
+          [t.date, t.amount, t.description, categoryId, t.type, t.importHash, 'once']
         );
         inserted++;
       }
