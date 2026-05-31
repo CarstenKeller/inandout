@@ -97,17 +97,25 @@ function streamToText(stream: string): string {
   return text;
 }
 
+// Lines that signal the start of a non-transaction section (legal notes, contact info, etc.)
+const SECTION_STOP_RE = /^(hinweis|rechtlich|ihre?\s+(sicherheit|kontakt|persönlich)|datenschutz|impressum|agb\b|konditionen\b)/i;
+
+// Descriptions that are balance/summary lines, not real transactions
+const SKIP_DESC_RE = /(gesamtsaldo|alter\s+(kontostand|saldo)|neuer\s+(kontostand|saldo)|saldo\s*(übertr|am\s+\d|zum\s+\d)|kontostand\s+(am|vom)\s+\d|abschlussbuchung|buchungen?\s+gesamt)/i;
+
 function parseTransactions(text: string): ImportedTransaction[] {
   const DATE_RE = /\b(\d{2}\.\d{2}\.\d{4})\b/;
-  // Match German amounts: optional sign, digits with dots as thousands sep, comma + 2 decimals
   const AMT_STANDALONE = /^([+-]?\d{1,3}(?:\.\d{3})*,\d{2})(\s*[+-])?$/;
   const AMT_INLINE = /\s([+-]?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/;
 
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const transactions: ImportedTransaction[] = [];
+  let stopParsing = false;
 
   let i = 0;
-  while (i < lines.length) {
+  while (i < lines.length && !stopParsing) {
+    if (SECTION_STOP_RE.test(lines[i])) { stopParsing = true; break; }
+
     const dateMatch = DATE_RE.exec(lines[i]);
     if (!dateMatch) { i++; continue; }
 
@@ -122,26 +130,32 @@ function parseTransactions(text: string): ImportedTransaction[] {
     while (i < lines.length) {
       const line = lines[i];
       if (DATE_RE.test(line)) break;
+      if (SECTION_STOP_RE.test(line)) { stopParsing = true; break; }
 
-      const standalone = AMT_STANDALONE.exec(line);
-      if (standalone) {
-        const rawAmt = standalone[1];
-        const trailingSign = standalone[2]?.trim();
-        const sign = rawAmt.startsWith('-') || trailingSign === '-' ? -1 : 1;
-        amount = sign * parseGermanAmount(rawAmt.replace(/^[+-]/, ''));
-        i++;
-        break;
-      }
+      if (amount === null) {
+        const standalone = AMT_STANDALONE.exec(line);
+        if (standalone) {
+          const rawAmt = standalone[1];
+          const trailingSign = standalone[2]?.trim();
+          const sign = rawAmt.startsWith('-') || trailingSign === '-' ? -1 : 1;
+          amount = sign * parseGermanAmount(rawAmt.replace(/^[+-]/, ''));
+          i++;
+          continue; // keep collecting — ING often places Verwendungszweck after the amount
+        }
 
-      const inlineAmt = AMT_INLINE.exec(line);
-      if (inlineAmt) {
-        const before = line.substring(0, line.length - inlineAmt[0].length).trim();
-        if (before) descParts.push(before);
-        const rawAmt = inlineAmt[1];
-        const sign = rawAmt.startsWith('-') ? -1 : 1;
-        amount = sign * parseGermanAmount(rawAmt.replace(/^[+-]/, ''));
-        i++;
-        break;
+        const inlineAmt = AMT_INLINE.exec(line);
+        if (inlineAmt) {
+          const before = line.substring(0, line.length - inlineAmt[0].length).trim();
+          if (before) descParts.push(before);
+          const rawAmt = inlineAmt[1];
+          const sign = rawAmt.startsWith('-') ? -1 : 1;
+          amount = sign * parseGermanAmount(rawAmt.replace(/^[+-]/, ''));
+          i++;
+          continue; // keep collecting post-amount lines
+        }
+      } else {
+        // Amount already found — a second standalone amount means next transaction starts
+        if (AMT_STANDALONE.exec(line)) break;
       }
 
       descParts.push(line);
@@ -150,6 +164,7 @@ function parseTransactions(text: string): ImportedTransaction[] {
 
     if (amount !== null && descParts.length > 0) {
       const description = descParts.join(' ').trim();
+      if (SKIP_DESC_RE.test(description)) continue; // skip balance/summary pseudo-transactions
       try {
         const date = parseGermanDate(rawDate);
         transactions.push({
