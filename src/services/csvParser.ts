@@ -27,11 +27,22 @@ export const parseINGCsv = async (uri: string): Promise<ImportedTransaction[]> =
   if (headerIndex === -1) throw new Error('Kein gültiges ING CSV-Format erkannt');
 
   const headers = lines[headerIndex].split(';').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-  const dateIdx = headers.findIndex(h => h.includes('buchung'));
-  const descIdx = headers.findIndex(h => h.includes('verwendungszweck') || h.includes('auftraggeber'));
+
+  // Date: must contain 'datum' or 'tag' (not just 'buchung' which also matches 'buchungstext')
+  const dateIdx = headers.findIndex(h =>
+    (h.includes('datum') && h.includes('buchung')) ||
+    (h.includes('tag') && h.includes('buchung'))
+  );
+  // Sender/recipient
+  const auftrIdx = headers.findIndex(h => h.includes('auftraggeber') || h.includes('empfänger'));
+  // Purpose
+  const zweckIdx = headers.findIndex(h => h.includes('verwendungszweck'));
+  // Transaction type label (e.g. "Lastschrift")
+  const buchtextIdx = headers.findIndex(h => h === 'buchungstext' || h.includes('buchungstext'));
+  // Amount
   const amountIdx = headers.findIndex(h => h.includes('betrag') && !h.includes('währung'));
 
-  if (dateIdx === -1 || amountIdx === -1) throw new Error('Pflichtfelder nicht gefunden');
+  if (dateIdx === -1 || amountIdx === -1) throw new Error('Pflichtfelder (Datum, Betrag) nicht gefunden');
 
   const transactions: ImportedTransaction[] = [];
 
@@ -41,9 +52,14 @@ export const parseINGCsv = async (uri: string): Promise<ImportedTransaction[]> =
 
     const rawDate = cols[dateIdx];
     const rawAmount = cols[amountIdx];
-    const description = descIdx !== -1 ? cols[descIdx] : (cols[1] ?? '');
-
     if (!rawDate || !rawAmount) continue;
+
+    // Combine all useful text fields — this gives matching much more to work with
+    const textParts = [auftrIdx, zweckIdx, buchtextIdx]
+      .filter(idx => idx !== -1)
+      .map(idx => (cols[idx] ?? '').trim())
+      .filter(Boolean);
+    const description = textParts.join(' · ') || cols[1] ?? '';
 
     try {
       const date = parseGermanDate(rawDate);
