@@ -141,6 +141,7 @@ export default function TransactionsScreen() {
 
       {/* Transaction list */}
       <FlatList
+        style={{ flex: 1 }}
         data={filtered}
         keyExtractor={item => String(item.id)}
         ListEmptyComponent={
