@@ -311,6 +311,43 @@ export const getCategoryBalances = (
   return Promise.resolve(rows);
 };
 
+export const getMonthlyBalancesForRange = (
+  fromYm: string, toYm: string
+): Promise<MonthlyBalance[]> => {
+  const [f, t] = fromYm <= toYm ? [fromYm, toYm] : [toYm, fromYm];
+
+  const rows = db.getAllSync<{ month: string; income: number; expenses: number }>(
+    `SELECT
+      strftime('%Y-%m', date) as month,
+      COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
+      COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expenses
+    FROM transactions
+    WHERE strftime('%Y-%m', date) >= ? AND strftime('%Y-%m', date) <= ? AND isManual = 0
+    GROUP BY month
+    ORDER BY month`,
+    [f, t]
+  );
+
+  const result: MonthlyBalance[] = [];
+  let [cy, cm] = f.split('-').map(Number);
+  const [ty, tm] = t.split('-').map(Number);
+
+  while (cy < ty || (cy === ty && cm <= tm)) {
+    const ym = `${cy}-${String(cm).padStart(2, '0')}`;
+    const row = rows.find(r => r.month === ym);
+    result.push({
+      month: ym,
+      income:   row?.income   ?? 0,
+      expenses: row?.expenses ?? 0,
+      balance: (row?.income ?? 0) - (row?.expenses ?? 0),
+    });
+    cm++;
+    if (cm > 12) { cy++; cm = 1; }
+  }
+
+  return Promise.resolve(result);
+};
+
 export const hashExists = (hash: string): boolean => {
   const row = db.getFirstSync<{ count: number }>(
     'SELECT COUNT(*) as count FROM transactions WHERE importHash = ?',
