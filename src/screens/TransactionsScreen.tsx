@@ -10,25 +10,14 @@ import { Transaction, Category, TransactionsStackParamList } from '../types';
 
 const DARK = {
   bg: '#121212', surface: '#1E1E1E', text: '#FFFFFF',
-  subtext: '#AAAAAA', income: '#4CAF50', expense: '#F44336', manual: '#FFB74D',
+  subtext: '#AAAAAA', income: '#4CAF50', expense: '#F44336',
 };
 
 type NavProp = NativeStackNavigationProp<TransactionsStackParamList, 'TransactionsList'>;
 type RouteProps = RouteProp<TransactionsStackParamList, 'TransactionsList'>;
 
-const RECURRENCE_LABELS: Record<string, string> = {
-  monthly: 'Monatlich', quarterly: 'Quartalsweise', yearly: 'Jährlich', once: '',
-};
-
 const formatCurrency = (amount: number) =>
   amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-
-function monthlyEquivalent(amount: number, recurrence: string): number {
-  if (recurrence === 'monthly')   return amount;
-  if (recurrence === 'quarterly') return amount / 3;
-  if (recurrence === 'yearly')    return amount / 12;
-  return 0; // 'once' not included in average
-}
 
 export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -48,7 +37,8 @@ export default function TransactionsScreen() {
     setLoading(true);
     try {
       const [txs, cats] = await Promise.all([getTransactions(), getCategories()]);
-      setTransactions(txs);
+      // only imported transactions — manual/planning entries live in the Planung tab
+      setTransactions(txs.filter(t => t.isManual === 0));
       setCategories(cats);
     } finally {
       setLoading(false);
@@ -60,17 +50,6 @@ export default function TransactionsScreen() {
   const filtered = transactions
     .filter(t => filterType === 'all' || t.type === filterType)
     .filter(t => filterCategoryId === null || t.categoryId === filterCategoryId);
-
-  // Monthly average for manual transactions in current view
-  const manualFiltered = filtered.filter(t => t.isManual === 1);
-  const avgIncome  = manualFiltered
-    .filter(t => t.type === 'income')
-    .reduce((s, t) => s + monthlyEquivalent(t.amount, t.recurrence), 0);
-  const avgExpense = manualFiltered
-    .filter(t => t.type === 'expense')
-    .reduce((s, t) => s + monthlyEquivalent(t.amount, t.recurrence), 0);
-  const avgBalance = avgIncome - avgExpense;
-  const showAvg = manualFiltered.some(t => t.recurrence !== 'once');
 
   const confirmDelete = (item: Transaction) => {
     Alert.alert('Löschen', `"${item.description}" wirklich löschen?`, [
@@ -85,7 +64,7 @@ export default function TransactionsScreen() {
   const handleLongPress = (item: Transaction) => {
     Alert.alert(item.description, undefined, [
       { text: 'Abbrechen', style: 'cancel' },
-      { text: 'Bearbeiten', onPress: () => navigation.navigate('AddTransaction', { transaction: item }) },
+      { text: 'Bearbeiten', onPress: () => navigation.navigate('AddTransaction', { transaction: item, defaultManual: false }) },
       { text: 'Löschen', style: 'destructive', onPress: () => confirmDelete(item) },
     ]);
   };
@@ -96,7 +75,7 @@ export default function TransactionsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Category filter bar — wrapped in View to pin height on Android */}
+      {/* Filter bar */}
       <View style={styles.filterBarOuter}>
         <ScrollView
           horizontal
@@ -149,83 +128,42 @@ export default function TransactionsScreen() {
         </ScrollView>
       </View>
 
-      {/* Monthly average summary */}
-      {showAvg && (
-        <View style={styles.summaryBar}>
-          <Text style={styles.summaryTitle}>Ø / Monat (Schätzungen)</Text>
-          <View style={styles.summaryRow}>
-            <Text style={[styles.summaryVal, { color: DARK.income }]}>+{formatCurrency(avgIncome)}</Text>
-            <Text style={styles.summarySep}>·</Text>
-            <Text style={[styles.summaryVal, { color: DARK.expense }]}>-{formatCurrency(avgExpense)}</Text>
-            <Text style={styles.summarySep}>·</Text>
-            <Text style={[styles.summaryVal, { color: avgBalance >= 0 ? DARK.income : DARK.expense, fontWeight: '700' }]}>
-              {formatCurrency(avgBalance)}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Transaction list */}
       <FlatList
         style={{ flex: 1 }}
         data={filtered}
         keyExtractor={item => String(item.id)}
         ListEmptyComponent={
           <Text style={styles.empty}>
-            {filterCategoryId ? 'Keine Buchungen in dieser Kategorie' : 'Keine Buchungen vorhanden'}
+            {filterCategoryId || filterType !== 'all'
+              ? 'Keine Buchungen für diesen Filter'
+              : 'Noch keine importierten Buchungen'}
           </Text>
         }
-        renderItem={({ item }) => {
-          const manual = item.isManual === 1;
-          return (
-            <TouchableHighlight
-              underlayColor="#333"
-              onLongPress={() => handleLongPress(item)}
-              style={[styles.item, manual && styles.manualItem]}
-            >
-              <View>
-                {manual && (
-                  <View style={styles.manualBadge}>
-                    <Text style={styles.manualBadgeText}>SCHÄTZUNG</Text>
-                  </View>
-                )}
-                <View style={styles.itemRow}>
-                  <View style={[styles.typeDot, {
-                    backgroundColor: item.type === 'income' ? DARK.income : DARK.expense,
-                  }]} />
-                  <View style={styles.info}>
-                    <View style={styles.descRow}>
-                      <Text style={styles.desc} numberOfLines={1}>{item.description}</Text>
-                      {manual && item.recurrence && item.recurrence !== 'once' && (
-                        <View style={styles.recurrencePill}>
-                          <Text style={styles.recurrencePillText}>
-                            {RECURRENCE_LABELS[item.recurrence]}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.meta} numberOfLines={1}>
-                      {item.date} · {item.categoryName ?? 'Ohne Kategorie'}
-                    </Text>
-                  </View>
-                  <Text style={[styles.amount, {
-                    color: item.type === 'income' ? DARK.income : DARK.expense,
-                  }]}>
-                    {item.type === 'expense' ? '-' : '+'}{formatCurrency(item.amount)}
-                  </Text>
-                </View>
+        renderItem={({ item }) => (
+          <TouchableHighlight
+            underlayColor="#333"
+            onLongPress={() => handleLongPress(item)}
+            style={styles.item}
+          >
+            <View style={styles.itemRow}>
+              <View style={[styles.typeDot, {
+                backgroundColor: item.type === 'income' ? DARK.income : DARK.expense,
+              }]} />
+              <View style={styles.info}>
+                <Text style={styles.desc} numberOfLines={1}>{item.description}</Text>
+                <Text style={styles.meta} numberOfLines={1}>
+                  {item.date} · {item.categoryName ?? 'Ohne Kategorie'}
+                </Text>
               </View>
-            </TouchableHighlight>
-          );
-        }}
+              <Text style={[styles.amount, {
+                color: item.type === 'income' ? DARK.income : DARK.expense,
+              }]}>
+                {item.type === 'expense' ? '-' : '+'}{formatCurrency(item.amount)}
+              </Text>
+            </View>
+          </TouchableHighlight>
+        )}
       />
-
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => navigation.navigate('AddTransaction', {})}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -248,42 +186,15 @@ const styles = StyleSheet.create({
   filterChipTextActive: { color: '#BB86FC', fontWeight: '700' },
   filterDot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
   filterSep: { width: 1, height: 20, backgroundColor: '#333', marginHorizontal: 4 },
-  summaryBar: {
-    backgroundColor: DARK.surface, marginHorizontal: 12, marginTop: 8,
-    borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-    borderLeftWidth: 3, borderLeftColor: DARK.manual,
-  },
-  summaryTitle: { color: DARK.subtext, fontSize: 11, marginBottom: 4 },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  summaryVal: { fontSize: 13 },
-  summarySep: { color: DARK.subtext, fontSize: 12 },
-  descRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
-  recurrencePill: {
-    backgroundColor: '#3D2E00', borderRadius: 10,
-    paddingHorizontal: 7, paddingVertical: 2, flexShrink: 0,
-  },
-  recurrencePillText: { color: DARK.manual, fontSize: 10, fontWeight: '600' },
   empty: { color: DARK.subtext, textAlign: 'center', marginTop: 40 },
   item: {
     marginHorizontal: 12, marginTop: 8, borderRadius: 10,
     backgroundColor: DARK.surface, overflow: 'hidden',
   },
-  manualItem: { borderWidth: 1, borderColor: DARK.manual, borderStyle: 'dashed' },
-  manualBadge: {
-    backgroundColor: '#3D2E00', paddingHorizontal: 10, paddingVertical: 3,
-    alignSelf: 'flex-start', borderBottomRightRadius: 8,
-  },
-  manualBadgeText: { color: DARK.manual, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   itemRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   typeDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   info: { flex: 1 },
   desc: { color: DARK.text, fontSize: 14, fontWeight: '500' },
   meta: { color: DARK.subtext, fontSize: 12, marginTop: 2 },
   amount: { fontSize: 14, fontWeight: '600' },
-  fab: {
-    position: 'absolute', bottom: 24, right: 24, backgroundColor: '#BB86FC',
-    width: 56, height: 56, borderRadius: 28, justifyContent: 'center',
-    alignItems: 'center', elevation: 6,
-  },
-  fabText: { color: '#000', fontSize: 28, fontWeight: 'bold', lineHeight: 32 },
 });

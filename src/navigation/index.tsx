@@ -11,10 +11,11 @@ import ImportScreen from '../screens/ImportScreen';
 import ImportReviewScreen from '../screens/ImportReviewScreen';
 import CategoriesScreen from '../screens/CategoriesScreen';
 import PlanningScreen from '../screens/PlanningScreen';
-import { TransactionsStackParamList, ImportStackParamList } from '../types';
+import { TransactionsStackParamList, ImportStackParamList, PlanningStackParamList } from '../types';
 
 const Tab = createBottomTabNavigator();
 const TxStack = createNativeStackNavigator<TransactionsStackParamList>();
+const PlStack = createNativeStackNavigator<PlanningStackParamList>();
 const ImpStack = createNativeStackNavigator<ImportStackParamList>();
 
 const DARK_NAV = {
@@ -54,6 +55,21 @@ function TransactionsStack() {
   );
 }
 
+function PlanningStack() {
+  return (
+    <PlStack.Navigator screenOptions={stackScreenOptions}>
+      <PlStack.Screen name="PlanningMain" component={PlanningScreen} options={{ title: 'Planung' }} />
+      <PlStack.Screen
+        name="AddTransaction"
+        component={AddTransactionScreen}
+        options={({ route }) =>
+          ({ title: route.params?.transaction ? 'Position bearbeiten' : 'Position hinzufügen' })
+        }
+      />
+    </PlStack.Navigator>
+  );
+}
+
 function ImportStack() {
   return (
     <ImpStack.Navigator screenOptions={stackScreenOptions}>
@@ -82,7 +98,7 @@ export default function Navigation() {
       >
         <Tab.Screen name="Dashboard"    component={DashboardScreen}   options={{ title: 'Übersicht' }} />
         <Tab.Screen name="Transactions" component={TransactionsStack}  options={{ title: 'Buchungen',   headerShown: false }} />
-        <Tab.Screen name="Planning"     component={PlanningScreen}     options={{ title: 'Planung' }} />
+        <Tab.Screen name="Planning"     component={PlanningStack}      options={{ title: 'Planung',     headerShown: false }} />
         <Tab.Screen name="Import"       component={ImportStack}        options={{ title: 'Importieren', headerShown: false }} />
         <Tab.Screen name="Categories"   component={CategoriesScreen}   options={{ title: 'Kategorien' }} />
       </Tab.Navigator>

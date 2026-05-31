@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { getCategories, addTransaction, updateTransaction } from '../database/queries';
-import { Category, Recurrence, TransactionsStackParamList } from '../types';
+import { Category, Recurrence, Transaction } from '../types';
 
 const DARK = {
   bg: '#121212', surface: '#1E1E1E', card: '#2C2C2C',
@@ -21,12 +21,14 @@ const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = [
 
 const MONTH_NAMES = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 
-type RouteProps = RouteProp<TransactionsStackParamList, 'AddTransaction'>;
+type AddTxParams = { transaction?: Transaction; defaultManual?: boolean };
+type RouteProps = RouteProp<{ AddTransaction: AddTxParams | undefined }, 'AddTransaction'>;
 
 export default function AddTransactionScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProps>();
   const existing = route.params?.transaction;
+  const defaultManual = route.params?.defaultManual ?? true;
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [type, setType] = useState<'income' | 'expense'>(existing?.type ?? 'expense');
@@ -34,7 +36,7 @@ export default function AddTransactionScreen() {
   const [description, setDescription] = useState(existing?.description ?? '');
   const [date, setDate] = useState(existing?.date ?? new Date().toISOString().split('T')[0]);
   const [categoryId, setCategoryId] = useState<number | null>(existing?.categoryId ?? null);
-  const [isManual, setIsManual] = useState((existing?.isManual ?? 1) === 1);
+  const [isManual, setIsManual] = useState(existing ? existing.isManual === 1 : defaultManual);
   const [recurrence, setRecurrence] = useState<Recurrence>(existing?.recurrence ?? 'monthly');
 
   const isEditing = !!existing;
