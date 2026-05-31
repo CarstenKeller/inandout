@@ -23,16 +23,15 @@ export const getTransactions = (month?: string): Promise<Transaction[]> => {
         `SELECT t.*, c.name as categoryName, c.color as categoryColor
          FROM transactions t
          LEFT JOIN categories c ON t.categoryId = c.id
-         WHERE strftime('%Y-%m', t.date) = ? AND t.isManual = 0
-         ORDER BY t.date DESC`,
+         WHERE strftime('%Y-%m', t.date) = ?
+         ORDER BY t.isManual ASC, t.date DESC`,
         [month]
       )
     : db.getAllSync<Transaction>(
         `SELECT t.*, c.name as categoryName, c.color as categoryColor
          FROM transactions t
          LEFT JOIN categories c ON t.categoryId = c.id
-         WHERE t.isManual = 0
-         ORDER BY t.date DESC`
+         ORDER BY t.isManual ASC, t.date DESC`
       );
   return Promise.resolve(rows);
 };
