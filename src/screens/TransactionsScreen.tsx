@@ -167,12 +167,18 @@ export default function TransactionsScreen() {
                     backgroundColor: item.type === 'income' ? DARK.income : DARK.expense,
                   }]} />
                   <View style={styles.info}>
-                    <Text style={styles.desc} numberOfLines={1}>{item.description}</Text>
-                    <Text style={styles.meta}>
+                    <View style={styles.descRow}>
+                      <Text style={styles.desc} numberOfLines={1}>{item.description}</Text>
+                      {manual && item.recurrence && item.recurrence !== 'once' && (
+                        <View style={styles.recurrencePill}>
+                          <Text style={styles.recurrencePillText}>
+                            {RECURRENCE_LABELS[item.recurrence]}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.meta} numberOfLines={1}>
                       {item.date} · {item.categoryName ?? 'Ohne Kategorie'}
-                      {manual && item.recurrence && item.recurrence !== 'once'
-                        ? ` · ${RECURRENCE_LABELS[item.recurrence]}`
-                        : ''}
                     </Text>
                   </View>
                   <Text style={[styles.amount, {
@@ -200,8 +206,8 @@ export default function TransactionsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: DARK.bg },
   center: { flex: 1, backgroundColor: DARK.bg, justifyContent: 'center', alignItems: 'center' },
-  filterBar: { maxHeight: 52, borderBottomWidth: 1, borderBottomColor: DARK.surface },
-  filterBarContent: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, flexDirection: 'row' },
+  filterBar: { height: 58, borderBottomWidth: 1, borderBottomColor: DARK.surface },
+  filterBarContent: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, flexDirection: 'row', alignItems: 'center' },
   filterChip: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 5,
     borderRadius: 16, backgroundColor: DARK.surface, borderWidth: 1, borderColor: 'transparent',
@@ -219,6 +225,12 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   summaryVal: { fontSize: 13 },
   summarySep: { color: DARK.subtext, fontSize: 12 },
+  descRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  recurrencePill: {
+    backgroundColor: '#3D2E00', borderRadius: 10,
+    paddingHorizontal: 7, paddingVertical: 2, flexShrink: 0,
+  },
+  recurrencePillText: { color: DARK.manual, fontSize: 10, fontWeight: '600' },
   empty: { color: DARK.subtext, textAlign: 'center', marginTop: 40 },
   item: {
     marginHorizontal: 12, marginTop: 8, borderRadius: 10,
