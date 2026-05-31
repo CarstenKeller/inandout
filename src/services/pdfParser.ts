@@ -122,6 +122,9 @@ function parseTransactions(text: string): ImportedTransaction[] {
     const rawDate = dateMatch[1];
     const descParts: string[] = [];
     let amount: number | null = null;
+    // ING PDFs repeat the booking date as valuta date on the next line.
+    // We allow ONE pass-through of the same date after the amount is found.
+    let valutaConsumed = false;
 
     const firstRest = lines[i].replace(dateMatch[0], '').trim();
     if (firstRest) descParts.push(firstRest);
@@ -129,8 +132,28 @@ function parseTransactions(text: string): ImportedTransaction[] {
 
     while (i < lines.length) {
       const line = lines[i];
-      if (DATE_RE.test(line)) break;
       if (SECTION_STOP_RE.test(line)) { stopParsing = true; break; }
+
+      if (DATE_RE.test(line)) {
+        if (amount === null) {
+          // Haven't found the amount yet — this is a new transaction's date
+          break;
+        }
+        // Amount already found.
+        // ING format: valuta date (same date) appears right after the amount line,
+        // followed by the Verwendungszweck. Allow exactly one pass-through.
+        const dm = DATE_RE.exec(line);
+        if (!valutaConsumed && dm && dm[1] === rawDate) {
+          valutaConsumed = true;
+          // Any text on this line after the date belongs to the description
+          const rest = line.replace(dm[0], '').trim();
+          if (rest) descParts.push(rest);
+          i++;
+          continue;
+        }
+        // Different date, or second occurrence of same date = new transaction
+        break;
+      }
 
       if (amount === null) {
         const standalone = AMT_STANDALONE.exec(line);
@@ -140,7 +163,7 @@ function parseTransactions(text: string): ImportedTransaction[] {
           const sign = rawAmt.startsWith('-') || trailingSign === '-' ? -1 : 1;
           amount = sign * parseGermanAmount(rawAmt.replace(/^[+-]/, ''));
           i++;
-          continue; // keep collecting — ING often places Verwendungszweck after the amount
+          continue;
         }
 
         const inlineAmt = AMT_INLINE.exec(line);
@@ -151,10 +174,10 @@ function parseTransactions(text: string): ImportedTransaction[] {
           const sign = rawAmt.startsWith('-') ? -1 : 1;
           amount = sign * parseGermanAmount(rawAmt.replace(/^[+-]/, ''));
           i++;
-          continue; // keep collecting post-amount lines
+          continue;
         }
       } else {
-        // Amount already found — a second standalone amount means next transaction starts
+        // Amount found — a second standalone amount means next transaction starts
         if (AMT_STANDALONE.exec(line)) break;
       }
 
@@ -164,7 +187,7 @@ function parseTransactions(text: string): ImportedTransaction[] {
 
     if (amount !== null && descParts.length > 0) {
       const description = descParts.join(' ').trim();
-      if (SKIP_DESC_RE.test(description)) continue; // skip balance/summary pseudo-transactions
+      if (SKIP_DESC_RE.test(description)) continue;
       try {
         const date = parseGermanDate(rawDate);
         transactions.push({
