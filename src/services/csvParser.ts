@@ -50,7 +50,7 @@ export const parseINGCsvContent = (content: string): ImportedTransaction[] => {
       .filter(idx => idx !== -1)
       .map(idx => (cols[idx] ?? '').trim())
       .filter(Boolean);
-    const description = textParts.join(' · ') || cols[1] ?? '';
+    const description = textParts.join(' · ') || (cols[1] ?? '');
 
     try {
       const date   = parseGermanDate(rawDate);
