@@ -61,13 +61,6 @@ export default function TransactionsScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.addBtn}
-        onPress={() => navigation.navigate('AddTransaction', {})}
-      >
-        <Text style={styles.addBtnText}>+ Buchung hinzufügen</Text>
-      </TouchableOpacity>
-
       <FlatList
         data={transactions}
         keyExtractor={item => String(item.id)}
@@ -107,6 +100,12 @@ export default function TransactionsScreen() {
           );
         }}
       />
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => navigation.navigate('AddTransaction', {})}
+      >
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -114,11 +113,12 @@ export default function TransactionsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: DARK.bg },
   center: { flex: 1, backgroundColor: DARK.bg, justifyContent: 'center', alignItems: 'center' },
-  addBtn: {
-    margin: 12, backgroundColor: '#1E1E1E', borderRadius: 10,
-    padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#BB86FC',
+  fab: {
+    position: 'absolute', bottom: 24, right: 24, backgroundColor: '#BB86FC',
+    width: 56, height: 56, borderRadius: 28, justifyContent: 'center',
+    alignItems: 'center', elevation: 6,
   },
-  addBtnText: { color: '#BB86FC', fontWeight: '600' },
+  fabText: { color: '#000', fontSize: 28, fontWeight: 'bold', lineHeight: 32 },
   empty: { color: DARK.subtext, textAlign: 'center', marginTop: 40 },
   item: {
     marginHorizontal: 12, marginTop: 8, borderRadius: 10,
