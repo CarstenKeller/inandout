@@ -20,6 +20,8 @@ const RECURRENCE_OPTIONS: { value: Recurrence; label: string }[] = [
   { value: 'yearly',    label: 'Jährlich' },
 ];
 
+const MONTH_NAMES = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+
 type RouteProps = RouteProp<TransactionsStackParamList, 'AddTransaction'>;
 
 export default function AddTransactionScreen() {
@@ -105,11 +107,40 @@ export default function AddTransactionScreen() {
         multiline
       />
 
-      <Text style={styles.label}>Datum</Text>
-      <TextInput
-        style={styles.input} value={date} onChangeText={setDate}
-        placeholder="YYYY-MM-DD" placeholderTextColor={DARK.subtext}
-      />
+      {isManual && recurrence === 'yearly' ? (
+        <>
+          <Text style={styles.label}>Monat der Zahlung</Text>
+          <View style={styles.monthGrid}>
+            {MONTH_NAMES.map((name, i) => {
+              const m = i + 1;
+              const currentMonth = parseInt(date.split('-')[1] ?? '1', 10);
+              const active = currentMonth === m;
+              return (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.monthChip, active && styles.monthChipActive]}
+                  onPress={() => {
+                    const year = date.split('-')[0] ?? new Date().getFullYear().toString();
+                    setDate(`${year}-${String(m).padStart(2, '0')}-01`);
+                  }}
+                >
+                  <Text style={[styles.monthChipText, active && styles.monthChipTextActive]}>
+                    {name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.label}>Datum</Text>
+          <TextInput
+            style={styles.input} value={date} onChangeText={setDate}
+            placeholder="YYYY-MM-DD" placeholderTextColor={DARK.subtext}
+          />
+        </>
+      )}
 
       <Text style={styles.label}>Kategorie</Text>
       {categories.length === 0 && (
@@ -193,6 +224,14 @@ const styles = StyleSheet.create({
   manualLabel: { color: DARK.manual, fontWeight: '600', fontSize: 14 },
   manualHint: { color: DARK.subtext, fontSize: 12, marginTop: 2 },
   recurrenceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  monthChip: {
+    width: '22%', paddingVertical: 10, borderRadius: 8, alignItems: 'center',
+    backgroundColor: DARK.surface, borderWidth: 1, borderColor: 'transparent',
+  },
+  monthChipActive: { borderColor: DARK.accent, backgroundColor: '#2A1F4A' },
+  monthChipText: { color: DARK.subtext, fontSize: 13, fontWeight: '500' },
+  monthChipTextActive: { color: DARK.accent, fontWeight: '700' },
   recurrenceChip: {
     backgroundColor: DARK.surface, borderRadius: 20,
     paddingVertical: 8, paddingHorizontal: 14,
