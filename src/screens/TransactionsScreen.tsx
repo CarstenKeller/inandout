@@ -88,40 +88,41 @@ export default function TransactionsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Category filter bar */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterBar}
-        contentContainerStyle={styles.filterBarContent}
-      >
-        <TouchableOpacity
-          style={[styles.filterChip, filterCategoryId === null && styles.filterChipActive]}
-          onPress={() => setFilterCategoryId(null)}
+      {/* Category filter bar — wrapped in View to pin height on Android */}
+      <View style={styles.filterBarOuter}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterBarContent}
         >
-          <Text style={[styles.filterChipText, filterCategoryId === null && styles.filterChipTextActive]}>
-            Alle
-          </Text>
-        </TouchableOpacity>
-        {categories.map(cat => (
           <TouchableOpacity
-            key={cat.id}
-            style={[
-              styles.filterChip,
-              filterCategoryId === cat.id && { backgroundColor: cat.color + '33', borderColor: cat.color },
-            ]}
-            onPress={() => setFilterCategoryId(prev => prev === cat.id ? null : cat.id)}
+            style={[styles.filterChip, filterCategoryId === null && styles.filterChipActive]}
+            onPress={() => setFilterCategoryId(null)}
           >
-            <View style={[styles.filterDot, { backgroundColor: cat.color }]} />
-            <Text style={[
-              styles.filterChipText,
-              filterCategoryId === cat.id && { color: cat.color, fontWeight: '700' },
-            ]}>
-              {cat.name}
+            <Text style={[styles.filterChipText, filterCategoryId === null && styles.filterChipTextActive]}>
+              Alle
             </Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+          {categories.map(cat => (
+            <TouchableOpacity
+              key={cat.id}
+              style={[
+                styles.filterChip,
+                filterCategoryId === cat.id && { backgroundColor: cat.color + '33', borderColor: cat.color },
+              ]}
+              onPress={() => setFilterCategoryId(prev => prev === cat.id ? null : cat.id)}
+            >
+              <View style={[styles.filterDot, { backgroundColor: cat.color }]} />
+              <Text style={[
+                styles.filterChipText,
+                filterCategoryId === cat.id && { color: cat.color, fontWeight: '700' },
+              ]}>
+                {cat.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {/* Monthly average summary */}
       {showAvg && (
@@ -207,7 +208,11 @@ export default function TransactionsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: DARK.bg },
   center: { flex: 1, backgroundColor: DARK.bg, justifyContent: 'center', alignItems: 'center' },
-  filterBar: { height: 58, borderBottomWidth: 1, borderBottomColor: DARK.surface },
+  filterBarOuter: {
+    height: 58, flexShrink: 0,
+    borderBottomWidth: 1, borderBottomColor: DARK.surface,
+    overflow: 'hidden',
+  },
   filterBarContent: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, flexDirection: 'row', alignItems: 'center' },
   filterChip: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 5,

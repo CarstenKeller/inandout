@@ -168,7 +168,7 @@ function parseTransactions(text: string): ImportedTransaction[] {
 
 export const parseINGPdf = async (uri: string): Promise<ImportedTransaction[]> => {
   const b64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
+    encoding: 'base64' as const,
   });
 
   const pdfBytes = base64ToUint8Array(b64);
