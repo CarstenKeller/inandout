@@ -1,5 +1,96 @@
 import { db } from './database';
-import { Transaction, Category, MonthlyBalance, CategoryBalance, ImportedTransaction } from '../types';
+import {
+  Transaction, Category, MonthlyBalance, CategoryBalance,
+  ImportedTransaction, ImportSessionRecord, ImportItemRecord,
+} from '../types';
+
+// ── Import sessions ──────────────────────────────────────────────────────────
+
+export const createImportSession = (
+  filename: string, fileHash: string, totalCount: number
+): number => {
+  const r = db.runSync(
+    'INSERT INTO import_sessions (filename, file_hash, imported_at, total_count) VALUES (?, ?, ?, ?)',
+    [filename, fileHash, new Date().toISOString(), totalCount]
+  );
+  return r.lastInsertRowId;
+};
+
+export const findSessionByHash = (fileHash: string): ImportSessionRecord | null =>
+  db.getFirstSync<ImportSessionRecord>(
+    'SELECT * FROM import_sessions WHERE file_hash = ?', [fileHash]
+  ) ?? null;
+
+export const getImportSessions = (): ImportSessionRecord[] =>
+  db.getAllSync<ImportSessionRecord>(
+    'SELECT * FROM import_sessions ORDER BY imported_at DESC'
+  );
+
+export const deleteImportSession = (id: number): void => {
+  db.runSync('DELETE FROM import_sessions WHERE id = ?', [id]);
+};
+
+export const updateSessionCounts = (sessionId: number): void => {
+  const row = db.getFirstSync<{ a: number; s: number; sk: number }>(
+    `SELECT
+      SUM(CASE WHEN status='auto'     THEN 1 ELSE 0 END) as a,
+      SUM(CASE WHEN status='assigned' THEN 1 ELSE 0 END) as s,
+      SUM(CASE WHEN status='skipped'  THEN 1 ELSE 0 END) as sk
+     FROM import_items WHERE session_id = ?`,
+    [sessionId]
+  );
+  db.runSync(
+    'UPDATE import_sessions SET auto_count=?, assigned_count=?, skipped_count=? WHERE id=?',
+    [row?.a ?? 0, row?.s ?? 0, row?.sk ?? 0, sessionId]
+  );
+};
+
+// ── Import items ─────────────────────────────────────────────────────────────
+
+export const bulkInsertImportItems = (
+  sessionId: number,
+  items: Array<{ tx: ImportedTransaction; status: 'pending' | 'auto'; categoryId: number | null }>
+): void => {
+  db.withTransactionSync(() => {
+    for (const { tx, status, categoryId } of items) {
+      db.runSync(
+        'INSERT INTO import_items (session_id, import_hash, date, amount, description, type, status, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [sessionId, tx.importHash, tx.date, tx.amount, tx.description, tx.type, status, categoryId ?? null]
+      );
+      if (categoryId !== null && !hashExists(tx.importHash)) {
+        db.runSync(
+          'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
+          [tx.date, tx.amount, tx.description, categoryId, tx.type, tx.importHash, 'once']
+        );
+      }
+    }
+  });
+};
+
+export const getPendingImportItems = (sessionId: number): ImportItemRecord[] =>
+  db.getAllSync<ImportItemRecord>(
+    "SELECT * FROM import_items WHERE session_id = ? AND status = 'pending' ORDER BY id",
+    [sessionId]
+  );
+
+export const assignImportItem = (
+  item: ImportItemRecord,
+  status: 'assigned' | 'auto' | 'skipped',
+  categoryId: number | null
+): void => {
+  db.withTransactionSync(() => {
+    db.runSync(
+      'UPDATE import_items SET status=?, category_id=? WHERE id=?',
+      [status, categoryId ?? null, item.id]
+    );
+    if (categoryId !== null && !hashExists(item.import_hash)) {
+      db.runSync(
+        'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
+        [item.date, item.amount, item.description, categoryId, item.type, item.import_hash, 'once']
+      );
+    }
+  });
+};
 
 export const getCategories = (): Promise<Category[]> =>
   Promise.resolve(db.getAllSync<Category>('SELECT * FROM categories ORDER BY name'));

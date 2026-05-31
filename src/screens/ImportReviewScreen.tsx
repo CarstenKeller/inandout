@@ -6,10 +6,13 @@ import {
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  getCategories, addCategory, updateCategoryKeywords, bulkInsertCategorized,
+  getCategories, addCategory,
+  updateCategoryKeywords, assignImportItem, updateSessionCounts,
+  getPendingImportItems, getImportSessions,
 } from '../database/queries';
-import { Category, ImportedTransaction, ImportStackParamList } from '../types';
-import { getImportSession, clearImportSession } from '../services/importSession';
+import {
+  Category, ImportItemRecord, ImportSessionRecord, ImportStackParamList,
+} from '../types';
 import { matchAll, suggestKeywords } from '../services/categoryMatcher';
 
 const DARK = {
@@ -19,8 +22,8 @@ const DARK = {
 };
 
 const PRESET_COLORS = [
-  '#4CAF50', '#F44336', '#FF9800', '#2196F3', '#9C27B0',
-  '#00BCD4', '#607D8B', '#9E9E9E', '#E91E63', '#FF5722',
+  '#4CAF50','#F44336','#FF9800','#2196F3','#9C27B0',
+  '#00BCD4','#607D8B','#9E9E9E','#E91E63','#FF5722',
 ];
 
 type NavProp = NativeStackNavigationProp<ImportStackParamList, 'ImportReview'>;
@@ -29,107 +32,120 @@ type RouteProps = RouteProp<ImportStackParamList, 'ImportReview'>;
 const formatCurrency = (n: number) =>
   n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 
+const toTx = (item: ImportItemRecord) => ({
+  date: item.date, amount: item.amount, description: item.description,
+  type: item.type, importHash: item.import_hash,
+});
+
 export default function ImportReviewScreen() {
   const navigation = useNavigation<NavProp>();
-  const { autoCount } = useRoute<RouteProps>().params;
+  const { sessionId } = useRoute<RouteProps>().params;
 
-  const session = getImportSession();
-  // Queue-based approach: remaining[0] is always the current item
-  const initialCount = useRef((session?.reviewItems ?? []).length).current;
-  const [remaining, setRemaining] = useState<ImportedTransaction[]>(
-    () => (session?.reviewItems ?? []).map(r => r.tx)
-  );
-  const [extraAutoItems, setExtraAutoItems] = useState<Array<{ tx: ImportedTransaction; categoryId: number }>>([]);
-  const [results, setResults] = useState<Array<{ tx: ImportedTransaction; categoryId: number | null }>>([]);
-  const [lastAutoGain, setLastAutoGain] = useState(0); // how many were auto-matched in last step
-
+  const [pending, setPending] = useState<ImportItemRecord[]>([]);
+  const [session, setSession] = useState<ImportSessionRecord | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
   const [kwChanges, setKwChanges] = useState<Record<number, string>>({});
   const [kwInput, setKwInput] = useState('');
-
-  // New category inline form
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState(PRESET_COLORS[0]);
+  const [lastAutoGain, setLastAutoGain] = useState(0);
+  const initialCount = useRef<number | null>(null);
 
-  const [importing, setImporting] = useState(false);
-
-  useFocusEffect(useCallback(() => {
+  const reload = useCallback(() => {
+    const items = getPendingImportItems(sessionId);
+    if (initialCount.current === null) initialCount.current = items.length;
+    setPending(items);
+    const all = getImportSessions();
+    setSession(all.find(s => s.id === sessionId) ?? null);
     getCategories().then(setCategories);
-  }, []));
+  }, [sessionId]);
+
+  useFocusEffect(useCallback(() => { reload(); }, [reload]));
 
   // ── Keywords helpers ──────────────────────────────────────────────────────
 
-  const getKeywordsFor = (catId: number): string => {
-    if (kwChanges[catId] !== undefined) return kwChanges[catId];
-    return categories.find(c => c.id === catId)?.keywords ?? '';
+  const getKwList = (catId: number): string[] => {
+    const raw = kwChanges[catId] !== undefined
+      ? kwChanges[catId]
+      : (categories.find(c => c.id === catId)?.keywords ?? '');
+    return raw.split(',').map(k => k.trim()).filter(Boolean);
   };
 
-  const getKeywordList = (catId: number): string[] =>
-    getKeywordsFor(catId).split(',').map(k => k.trim()).filter(Boolean);
-
-  const addKeyword = (kw: string) => {
+  const addKw = (kw: string) => {
     if (!selectedCatId || !kw.trim()) return;
     const clean = kw.trim().toLowerCase();
-    const existing = getKeywordList(selectedCatId);
+    const existing = getKwList(selectedCatId);
     if (!existing.includes(clean)) {
-      setKwChanges(prev => ({
-        ...prev,
-        [selectedCatId]: [...existing, clean].join(', '),
-      }));
+      setKwChanges(prev => ({ ...prev, [selectedCatId]: [...existing, clean].join(', ') }));
     }
   };
 
-  const removeKeyword = (kw: string) => {
+  const removeKw = (kw: string) => {
     if (!selectedCatId) return;
-    const updated = getKeywordList(selectedCatId).filter(k => k !== kw);
-    setKwChanges(prev => ({ ...prev, [selectedCatId]: updated.join(', ') }));
+    setKwChanges(prev => ({
+      ...prev,
+      [selectedCatId]: getKwList(selectedCatId).filter(k => k !== kw).join(', '),
+    }));
   };
 
-  // ── Proceed (assign or skip) ───────────────────────────────────────────────
+  // ── Assign or skip ────────────────────────────────────────────────────────
 
-  const proceed = (catId: number | null) => {
-    if (remaining.length === 0) return;
-    const [current, ...rest] = remaining;
+  const proceed = async (catId: number | null) => {
+    if (pending.length === 0) return;
+    const [current, ...rest] = pending;
 
-    let newExtra: Array<{ tx: ImportedTransaction; categoryId: number }> = [];
-    let newRemaining = rest;
+    // Save keyword changes to DB before writing transaction
+    if (catId !== null && kwChanges[catId] !== undefined) {
+      await updateCategoryKeywords(catId, kwChanges[catId]);
+      setKwChanges(prev => { const n = { ...prev }; delete n[catId]; return n; });
+    }
 
-    // Re-match remaining items against accumulated keywords whenever we assigned a category
+    // Write to DB immediately
+    assignImportItem(current, catId !== null ? 'assigned' : 'skipped', catId);
+
+    // Re-match remaining with updated keywords
+    let newPending = rest;
+    let autoGain = 0;
+
     if (catId !== null && rest.length > 0) {
-      const mergedCats = categories.map(c => ({
+      const freshCats = await getCategories();
+      const mergedCats = freshCats.map(c => ({
         ...c,
         keywords: kwChanges[c.id] !== undefined ? kwChanges[c.id] : (c.keywords ?? ''),
       }));
-      const rematched = matchAll(rest, mergedCats);
-      newExtra = rematched
-        .filter(r => r.categoryId !== null)
-        .map(r => ({ tx: r.tx, categoryId: r.categoryId! }));
-      newRemaining = rematched.filter(r => r.categoryId === null).map(r => r.tx);
+      const rematched = matchAll(rest.map(toTx), mergedCats);
+
+      for (const r of rematched) {
+        if (r.categoryId !== null) {
+          const item = rest.find(i => i.import_hash === r.tx.importHash);
+          if (item) { assignImportItem(item, 'auto', r.categoryId); autoGain++; }
+        }
+      }
+      newPending = rematched.filter(r => r.categoryId === null)
+        .map(r => rest.find(i => i.import_hash === r.tx.importHash)!);
     }
 
-    setResults(prev => [...prev, { tx: current, categoryId: catId }]);
-    setExtraAutoItems(prev => [...prev, ...newExtra]);
-    setRemaining(newRemaining);
-    setLastAutoGain(newExtra.length);
+    updateSessionCounts(sessionId);
+    const all = getImportSessions();
+    setSession(all.find(s => s.id === sessionId) ?? null);
+    setPending(newPending);
+    setLastAutoGain(autoGain);
     setSelectedCatId(null);
     setKwInput('');
     setShowNewCat(false);
     setNewCatName('');
   };
 
-  // ── Create new category inline ────────────────────────────────────────────
+  // ── Create new category ───────────────────────────────────────────────────
 
   const handleCreateCategory = async () => {
     if (!newCatName.trim()) return;
-    const current = remaining[0];
+    const current = pending[0];
     const id = await addCategory({
-      name: newCatName.trim(),
-      color: newCatColor,
-      icon: 'ellipsis-horizontal',
-      type: current?.type ?? 'both',
-      keywords: '',
+      name: newCatName.trim(), color: newCatColor,
+      icon: 'ellipsis-horizontal', type: current?.type ?? 'both', keywords: '',
     });
     const updated = await getCategories();
     setCategories(updated);
@@ -138,91 +154,76 @@ export default function ImportReviewScreen() {
     setNewCatName('');
   };
 
-  // ── Final import ──────────────────────────────────────────────────────────
+  // ── Summary ───────────────────────────────────────────────────────────────
 
-  const handleImport = async () => {
-    setImporting(true);
-    try {
-      for (const [catIdStr, keywords] of Object.entries(kwChanges)) {
-        await updateCategoryKeywords(Number(catIdStr), keywords);
-      }
-      const allAutoItems = [...(session?.autoItems ?? []), ...extraAutoItems];
-      const manualItems = results
-        .filter(r => r.categoryId !== null)
-        .map(r => ({ tx: r.tx, categoryId: r.categoryId! }));
-      const count = await bulkInsertCategorized([...allAutoItems, ...manualItems]);
-      clearImportSession();
-      Alert.alert(
-        'Fertig',
-        `${count} neue Buchungen importiert (Duplikate übersprungen)`,
-        [{ text: 'OK', onPress: () => navigation.navigate('ImportMain') }]
-      );
-    } catch (e: unknown) {
-      Alert.alert('Fehler', e instanceof Error ? e.message : 'Unbekannter Fehler');
-      setImporting(false);
-    }
-  };
-
-  if (importing) {
-    return <View style={styles.center}><ActivityIndicator color={DARK.accent} size="large" /></View>;
-  }
-
-  // ── Summary screen ────────────────────────────────────────────────────────
-
-  if (remaining.length === 0) {
-    const totalAuto = autoCount + extraAutoItems.length;
-    const manualCount = results.filter(r => r.categoryId !== null).length;
-    const skippedCount = results.filter(r => r.categoryId === null).length;
-    const total = totalAuto + manualCount;
-
+  if (pending.length === 0 && session !== null) {
     return (
       <View style={styles.summaryContainer}>
-        <Text style={styles.summaryTitle}>Bereit zum Importieren</Text>
+        <Text style={styles.summaryTitle}>Import abgeschlossen</Text>
         <View style={styles.summaryCard}>
-          <SummaryRow label="Automatisch erkannt" value={totalAuto} color={DARK.income} />
-          <SummaryRow label="Manuell zugeordnet" value={manualCount} color={DARK.accent} />
-          {skippedCount > 0 && <SummaryRow label="Übersprungen" value={skippedCount} color={DARK.subtext} />}
+          <SRow label="Gefunden" value={session.total_count} color={DARK.text} />
+          <SRow label="Automatisch erkannt" value={session.auto_count} color={DARK.income} />
+          <SRow label="Manuell zugeordnet" value={session.assigned_count} color={DARK.accent} />
+          {session.skipped_count > 0 &&
+            <SRow label="Übersprungen" value={session.skipped_count} color={DARK.subtext} />}
           <View style={styles.divider} />
-          <SummaryRow label="Gesamt" value={total} color={DARK.text} bold />
+          <SRow
+            label="Importiert"
+            value={session.auto_count + session.assigned_count}
+            color={DARK.income} bold
+          />
         </View>
-        <TouchableOpacity style={styles.importBtn} onPress={handleImport}>
-          <Text style={styles.importBtnText}>{total} Buchungen importieren</Text>
+        <Text style={styles.summaryHint}>
+          Alle Buchungen wurden sofort in die Datenbank übernommen.
+        </Text>
+        <TouchableOpacity style={styles.doneBtn} onPress={() => navigation.navigate('ImportMain')}>
+          <Text style={styles.doneBtnText}>Zurück zur Übersicht</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // ── Review screen ─────────────────────────────────────────────────────────
+  if (pending.length === 0) {
+    return <View style={styles.center}><ActivityIndicator color={DARK.accent} size="large" /></View>;
+  }
 
-  const current = remaining[0];
-  const processed = results.length + extraAutoItems.length;
-  const displayTotal = processed + remaining.length;
+  // ── Review ────────────────────────────────────────────────────────────────
+
+  const current = pending[0];
+  const processed = (session?.assigned_count ?? 0) + (session?.skipped_count ?? 0) + (session?.auto_count ?? 0) - (session ? session.total_count - (initialCount.current ?? session.total_count) - (session.auto_count) : 0);
+  const total = initialCount.current ?? pending.length;
+  const reviewedSoFar = total - pending.length;
+
   const visibleCats = categories.filter(c => c.type === 'both' || c.type === current.type);
-  const suggestions = suggestKeywords(current.description);
   const selectedCat = categories.find(c => c.id === selectedCatId);
-  const currentKwList = selectedCatId ? getKeywordList(selectedCatId) : [];
+  const currentKwList = selectedCatId ? getKwList(selectedCatId) : [];
+  const suggestions = suggestKeywords(current.description);
   const unusedSuggestions = suggestions.filter(s => !currentKwList.includes(s));
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Progress */}
       <View style={styles.progressRow}>
-        <Text style={styles.progressText}>{processed + 1} von {displayTotal}</Text>
+        <Text style={styles.progressText}>{reviewedSoFar + 1} von {total}</Text>
         {lastAutoGain > 0 && (
           <Text style={styles.autoGainBadge}>+{lastAutoGain} automatisch erkannt</Text>
         )}
       </View>
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, {
-          width: `${Math.min(100, ((processed + 1) / Math.max(initialCount, 1)) * 100)}%` as any,
+          width: `${Math.min(100, ((reviewedSoFar + 1) / Math.max(total, 1)) * 100)}%` as any,
         }]} />
       </View>
 
       {/* Transaction card */}
       <View style={styles.txCard}>
         <View style={styles.txHeader}>
-          <View style={[styles.typeDot, { backgroundColor: current.type === 'income' ? DARK.income : DARK.expense }]} />
-          <Text style={[styles.txAmount, { color: current.type === 'income' ? DARK.income : DARK.expense }]}>
+          <View style={[styles.typeDot, {
+            backgroundColor: current.type === 'income' ? DARK.income : DARK.expense,
+          }]} />
+          <Text style={[styles.txAmount, {
+            color: current.type === 'income' ? DARK.income : DARK.expense,
+          }]}>
             {current.type === 'expense' ? '–' : '+'}{formatCurrency(current.amount)}
           </Text>
           <Text style={styles.txDate}>{current.date}</Text>
@@ -247,21 +248,20 @@ export default function ImportReviewScreen() {
         ))}
       </View>
 
-      {/* New category button / inline form */}
+      {/* New category */}
       {!showNewCat ? (
-        <TouchableOpacity style={styles.newCatBtn} onPress={() => { setShowNewCat(true); setSelectedCatId(null); }}>
+        <TouchableOpacity
+          style={styles.newCatBtn}
+          onPress={() => { setShowNewCat(true); setSelectedCatId(null); }}
+        >
           <Text style={styles.newCatBtnText}>+ Neue Kategorie anlegen</Text>
         </TouchableOpacity>
       ) : (
         <View style={styles.newCatForm}>
-          <Text style={styles.label}>Name der neuen Kategorie</Text>
+          <Text style={styles.label}>Name</Text>
           <TextInput
-            style={styles.newCatInput}
-            value={newCatName}
-            onChangeText={setNewCatName}
-            placeholder="Kategoriename..."
-            placeholderTextColor={DARK.subtext}
-            autoFocus
+            style={styles.newCatInput} value={newCatName} onChangeText={setNewCatName}
+            placeholder="Kategoriename..." placeholderTextColor={DARK.subtext} autoFocus
           />
           <Text style={styles.label}>Farbe</Text>
           <View style={styles.colorRow}>
@@ -284,57 +284,50 @@ export default function ImportReviewScreen() {
         </View>
       )}
 
-      {/* Keywords section — shown when a category is selected */}
+      {/* Keywords */}
       {selectedCatId !== null && (
         <View style={styles.kwSection}>
           <Text style={styles.label}>Stichworte für „{selectedCat?.name}"</Text>
           <Text style={styles.kwHint}>
-            Buchungen, die eines dieser Stichworte enthalten, werden beim nächsten Import automatisch dieser Kategorie zugeordnet.
+            Beim nächsten Import werden Buchungen mit diesen Stichworten automatisch erkannt.
           </Text>
-
           {currentKwList.length > 0 && (
             <View style={styles.chipRow}>
               {currentKwList.map(kw => (
-                <TouchableOpacity key={kw} style={styles.kwChip} onPress={() => removeKeyword(kw)}>
+                <TouchableOpacity key={kw} style={styles.kwChip} onPress={() => removeKw(kw)}>
                   <Text style={styles.kwChipText}>{kw}</Text>
                   <Text style={styles.kwRemove}> ×</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
-
           {unusedSuggestions.length > 0 && (
             <>
-              <Text style={styles.sublabel}>Vorschläge aus Beschreibung (antippen zum Hinzufügen):</Text>
+              <Text style={styles.sublabel}>Vorschläge (antippen zum Hinzufügen):</Text>
               <View style={styles.chipRow}>
                 {unusedSuggestions.map(s => (
-                  <TouchableOpacity key={s} style={styles.suggestionChip} onPress={() => addKeyword(s)}>
+                  <TouchableOpacity key={s} style={styles.suggestionChip} onPress={() => addKw(s)}>
                     <Text style={styles.suggestionText}>+ {s}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </>
           )}
-
           <View style={styles.kwInputRow}>
             <TextInput
-              style={styles.kwInput}
-              value={kwInput}
-              onChangeText={setKwInput}
-              placeholder="Eigenes Stichwort..."
-              placeholderTextColor={DARK.subtext}
-              autoCapitalize="none"
-              returnKeyType="done"
-              onSubmitEditing={() => { addKeyword(kwInput); setKwInput(''); }}
+              style={styles.kwInput} value={kwInput} onChangeText={setKwInput}
+              placeholder="Eigenes Stichwort..." placeholderTextColor={DARK.subtext}
+              autoCapitalize="none" returnKeyType="done"
+              onSubmitEditing={() => { addKw(kwInput); setKwInput(''); }}
             />
-            <TouchableOpacity style={styles.kwAddBtn} onPress={() => { addKeyword(kwInput); setKwInput(''); }}>
+            <TouchableOpacity style={styles.kwAddBtn} onPress={() => { addKw(kwInput); setKwInput(''); }}>
               <Text style={styles.kwAddBtnText}>+</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* Action buttons */}
+      {/* Buttons */}
       <View style={styles.btnRow}>
         <TouchableOpacity style={styles.skipBtn} onPress={() => proceed(null)}>
           <Text style={styles.skipBtnText}>Überspringen</Text>
@@ -351,7 +344,7 @@ export default function ImportReviewScreen() {
   );
 }
 
-function SummaryRow({ label, value, color, bold }: { label: string; value: number; color: string; bold?: boolean }) {
+function SRow({ label, value, color, bold }: { label: string; value: number; color: string; bold?: boolean }) {
   return (
     <View style={styles.summaryRow}>
       <Text style={[styles.summaryLabel, bold && { fontWeight: '700', color: DARK.text }]}>{label}</Text>
@@ -394,12 +387,12 @@ const styles = StyleSheet.create({
   },
   newCatBtnText: { color: DARK.subtext, fontSize: 13 },
   newCatForm: {
-    backgroundColor: DARK.surface, borderRadius: 12, padding: 14, marginTop: 8,
-    borderWidth: 1, borderColor: DARK.accent,
+    backgroundColor: DARK.surface, borderRadius: 12, padding: 14,
+    marginTop: 8, borderWidth: 1, borderColor: DARK.accent,
   },
   newCatInput: {
-    backgroundColor: DARK.card, color: DARK.text, borderRadius: 8,
-    padding: 10, fontSize: 14, marginBottom: 4,
+    backgroundColor: DARK.card, color: DARK.text,
+    borderRadius: 8, padding: 10, fontSize: 14, marginBottom: 4,
   },
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   colorDot: { width: 26, height: 26, borderRadius: 13 },
@@ -439,11 +432,12 @@ const styles = StyleSheet.create({
 
   summaryContainer: { flex: 1, backgroundColor: DARK.bg, padding: 24, justifyContent: 'center' },
   summaryTitle: { color: DARK.text, fontSize: 22, fontWeight: '700', marginBottom: 24, textAlign: 'center' },
-  summaryCard: { backgroundColor: DARK.surface, borderRadius: 14, padding: 16, marginBottom: 24 },
+  summaryCard: { backgroundColor: DARK.surface, borderRadius: 14, padding: 16, marginBottom: 16 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
   summaryLabel: { color: DARK.subtext, fontSize: 14 },
   summaryValue: { fontSize: 14, fontWeight: '600' },
   divider: { height: 1, backgroundColor: DARK.card, marginVertical: 4 },
-  importBtn: { backgroundColor: DARK.accent, borderRadius: 14, padding: 18, alignItems: 'center' },
-  importBtnText: { color: '#000', fontWeight: '700', fontSize: 16 },
+  summaryHint: { color: DARK.subtext, fontSize: 12, textAlign: 'center', marginBottom: 24 },
+  doneBtn: { backgroundColor: DARK.accent, borderRadius: 14, padding: 18, alignItems: 'center' },
+  doneBtnText: { color: '#000', fontWeight: '700', fontSize: 16 },
 });

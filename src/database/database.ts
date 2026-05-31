@@ -34,6 +34,34 @@ export const initDatabase = (): Promise<void> => {
     try { db.execSync("ALTER TABLE transactions ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'once'"); } catch {}
     try { db.execSync("ALTER TABLE categories ADD COLUMN keywords TEXT NOT NULL DEFAULT ''"); } catch {}
 
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS import_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        filename TEXT NOT NULL,
+        file_hash TEXT NOT NULL,
+        imported_at TEXT NOT NULL,
+        total_count INTEGER NOT NULL DEFAULT 0,
+        auto_count INTEGER NOT NULL DEFAULT 0,
+        assigned_count INTEGER NOT NULL DEFAULT 0,
+        skipped_count INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS import_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        import_hash TEXT NOT NULL,
+        date TEXT NOT NULL,
+        amount REAL NOT NULL,
+        description TEXT NOT NULL,
+        type TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        category_id INTEGER,
+        FOREIGN KEY (session_id) REFERENCES import_sessions(id) ON DELETE CASCADE
+      )
+    `);
+
     // Remove duplicate categories, keep lowest id per name
     db.execSync(
       'DELETE FROM categories WHERE id NOT IN (SELECT MIN(id) FROM categories GROUP BY name)'

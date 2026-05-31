@@ -60,5 +60,28 @@ export type TransactionsStackParamList = {
 
 export type ImportStackParamList = {
   ImportMain: undefined;
-  ImportReview: { autoCount: number; reviewCount: number };
+  ImportReview: { sessionId: number };
 };
+
+export interface ImportSessionRecord {
+  id: number;
+  filename: string;
+  file_hash: string;
+  imported_at: string;
+  total_count: number;
+  auto_count: number;
+  assigned_count: number;
+  skipped_count: number;
+}
+
+export interface ImportItemRecord {
+  id: number;
+  session_id: number;
+  import_hash: string;
+  date: string;
+  amount: number;
+  description: string;
+  type: 'income' | 'expense';
+  status: 'pending' | 'auto' | 'assigned' | 'skipped';
+  category_id: number | null;
+}

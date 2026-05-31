@@ -166,11 +166,7 @@ function parseTransactions(text: string): ImportedTransaction[] {
   return transactions;
 }
 
-export const parseINGPdf = async (uri: string): Promise<ImportedTransaction[]> => {
-  const b64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: 'base64' as const,
-  });
-
+export const parseINGPdfFromBase64 = (b64: string): ImportedTransaction[] => {
   const pdfBytes = base64ToUint8Array(b64);
   const pdfString = toLatinString(pdfBytes);
 
@@ -180,12 +176,15 @@ export const parseINGPdf = async (uri: string): Promise<ImportedTransaction[]> =
 
   const streams = extractStreamTexts(pdfString);
   const allText = streams.map(streamToText).join('\n');
-
   const transactions = parseTransactions(allText);
 
   if (transactions.length === 0) {
     throw new Error('Keine Buchungen im PDF erkannt. Bitte prüfe das Format oder verwende CSV.');
   }
-
   return transactions;
+};
+
+export const parseINGPdf = async (uri: string): Promise<ImportedTransaction[]> => {
+  const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' as const });
+  return parseINGPdfFromBase64(b64);
 };
