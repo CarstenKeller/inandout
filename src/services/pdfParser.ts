@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { inflate } from 'pako';
 import { ImportedTransaction } from '../types';
 import { generateHash } from './importHash';
