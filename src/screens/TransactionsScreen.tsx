@@ -1,9 +1,9 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity, Alert,
   ActivityIndicator, TouchableHighlight, ScrollView,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { getTransactions, deleteTransaction, getCategories } from '../database/queries';
 import { Transaction, Category, TransactionsStackParamList } from '../types';
@@ -14,6 +14,7 @@ const DARK = {
 };
 
 type NavProp = NativeStackNavigationProp<TransactionsStackParamList, 'TransactionsList'>;
+type RouteProps = RouteProp<TransactionsStackParamList, 'TransactionsList'>;
 
 const RECURRENCE_LABELS: Record<string, string> = {
   monthly: 'Monatlich', quarterly: 'Quartalsweise', yearly: 'Jährlich', once: '',
@@ -33,8 +34,15 @@ export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [filterCategoryId, setFilterCategoryId] = useState<number | null>(null);
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [loading, setLoading] = useState(true);
   const navigation = useNavigation<NavProp>();
+  const route = useRoute<RouteProps>();
+
+  useEffect(() => {
+    const tf = route.params?.typeFilter;
+    if (tf) setFilterType(tf);
+  }, [route.params?.typeFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,9 +57,9 @@ export default function TransactionsScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const filtered = filterCategoryId
-    ? transactions.filter(t => t.categoryId === filterCategoryId)
-    : transactions;
+  const filtered = transactions
+    .filter(t => filterType === 'all' || t.type === filterType)
+    .filter(t => filterCategoryId === null || t.categoryId === filterCategoryId);
 
   // Monthly average for manual transactions in current view
   const manualFiltered = filtered.filter(t => t.isManual === 1);
@@ -96,13 +104,30 @@ export default function TransactionsScreen() {
           contentContainerStyle={styles.filterBarContent}
         >
           <TouchableOpacity
-            style={[styles.filterChip, filterCategoryId === null && styles.filterChipActive]}
-            onPress={() => setFilterCategoryId(null)}
+            style={[styles.filterChip, filterType === 'all' && filterCategoryId === null && styles.filterChipActive]}
+            onPress={() => { setFilterType('all'); setFilterCategoryId(null); }}
           >
-            <Text style={[styles.filterChipText, filterCategoryId === null && styles.filterChipTextActive]}>
+            <Text style={[styles.filterChipText, filterType === 'all' && filterCategoryId === null && styles.filterChipTextActive]}>
               Alle
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, filterType === 'income' && { backgroundColor: '#1B3A1B', borderColor: '#4CAF50' }]}
+            onPress={() => { setFilterType(prev => prev === 'income' ? 'all' : 'income'); setFilterCategoryId(null); }}
+          >
+            <Text style={[styles.filterChipText, filterType === 'income' && { color: '#4CAF50', fontWeight: '700' }]}>
+              ↑ Einnahmen
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterChip, filterType === 'expense' && { backgroundColor: '#3A0000', borderColor: '#F44336' }]}
+            onPress={() => { setFilterType(prev => prev === 'expense' ? 'all' : 'expense'); setFilterCategoryId(null); }}
+          >
+            <Text style={[styles.filterChipText, filterType === 'expense' && { color: '#F44336', fontWeight: '700' }]}>
+              ↓ Ausgaben
+            </Text>
+          </TouchableOpacity>
+          <View style={styles.filterSep} />
           {categories.map(cat => (
             <TouchableOpacity
               key={cat.id}
@@ -222,6 +247,7 @@ const styles = StyleSheet.create({
   filterChipText: { color: DARK.subtext, fontSize: 13 },
   filterChipTextActive: { color: '#BB86FC', fontWeight: '700' },
   filterDot: { width: 7, height: 7, borderRadius: 4, marginRight: 5 },
+  filterSep: { width: 1, height: 20, backgroundColor: '#333', marginHorizontal: 4 },
   summaryBar: {
     backgroundColor: DARK.surface, marginHorizontal: 12, marginTop: 8,
     borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,

@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { getMonthlyBalance, getCategoryBalances } from '../database/queries';
 import { MonthlyBalance, CategoryBalance } from '../types';
 
@@ -28,6 +28,14 @@ export default function DashboardScreen() {
   const [categories, setCategories] = useState<CategoryBalance[]>([]);
   const [month, setMonth] = useState(getCurrentMonth());
   const [loading, setLoading] = useState(true);
+  const navigation = useNavigation<any>();
+
+  const goToTransactions = (typeFilter: 'income' | 'expense') => {
+    navigation.navigate('Transactions', {
+      screen: 'TransactionsList',
+      params: { typeFilter },
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,14 +91,14 @@ export default function DashboardScreen() {
             {formatCurrency(balance.balance)}
           </Text>
           <View style={styles.row}>
-            <View style={styles.halfCard}>
+            <TouchableOpacity style={styles.halfCard} onPress={() => goToTransactions('income')} activeOpacity={0.7}>
               <Text style={styles.subtext}>Einnahmen</Text>
               <Text style={[styles.subAmount, { color: DARK.income }]}>{formatCurrency(balance.income)}</Text>
-            </View>
-            <View style={styles.halfCard}>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.halfCard} onPress={() => goToTransactions('expense')} activeOpacity={0.7}>
               <Text style={styles.subtext}>Ausgaben</Text>
               <Text style={[styles.subAmount, { color: DARK.expense }]}>{formatCurrency(balance.expenses)}</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
       )}
