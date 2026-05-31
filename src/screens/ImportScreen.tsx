@@ -10,7 +10,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   getCategories,
   createImportSession, findSessionByHash, getImportSessions,
-  bulkInsertImportItems, updateSessionCounts, deleteImportSession,
+  bulkInsertImportItems, updateSessionCounts,
+  deleteImportSession, deleteImportSessionWithTransactions,
 } from '../database/queries';
 import { ImportStackParamList, ImportSessionRecord } from '../types';
 import { parseINGCsvContent } from '../services/csvParser';
@@ -119,13 +120,22 @@ export default function ImportScreen() {
   };
 
   const handleDelete = (session: ImportSessionRecord) => {
-    Alert.alert('Import löschen', `"${session.filename}" und alle zugehörigen Einträge löschen?\n\nBereits importierte Buchungen bleiben erhalten.`, [
-      { text: 'Abbrechen', style: 'cancel' },
-      {
-        text: 'Löschen', style: 'destructive',
-        onPress: () => { deleteImportSession(session.id); setSessions(getImportSessions()); },
-      },
-    ]);
+    const imported = session.auto_count + session.assigned_count;
+    Alert.alert(
+      'Import löschen',
+      `"${session.filename}"\n\n${imported > 0 ? `${imported} Buchungen wurden aus diesem Import übernommen.` : 'Keine Buchungen wurden importiert.'}`,
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Nur Session',
+          onPress: () => { deleteImportSession(session.id); setSessions(getImportSessions()); },
+        },
+        {
+          text: `Mit ${imported} Buchungen`, style: 'destructive',
+          onPress: () => { deleteImportSessionWithTransactions(session.id); setSessions(getImportSessions()); },
+        },
+      ]
+    );
   };
 
   const pendingCount = (s: ImportSessionRecord) =>

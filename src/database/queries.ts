@@ -30,6 +30,19 @@ export const deleteImportSession = (id: number): void => {
   db.runSync('DELETE FROM import_sessions WHERE id = ?', [id]);
 };
 
+export const deleteImportSessionWithTransactions = (id: number): void => {
+  db.withTransactionSync(() => {
+    // Delete transactions whose importHash matches any item in this session
+    db.runSync(
+      `DELETE FROM transactions WHERE importHash IN (
+         SELECT import_hash FROM import_items WHERE session_id = ?
+       )`,
+      [id]
+    );
+    db.runSync('DELETE FROM import_sessions WHERE id = ?', [id]);
+  });
+};
+
 export const updateSessionCounts = (sessionId: number): void => {
   const row = db.getFirstSync<{ a: number; s: number; sk: number }>(
     `SELECT
