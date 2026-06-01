@@ -31,6 +31,7 @@ export interface Transaction {
   type: 'income' | 'expense';
   importHash?: string;
   isManual: number;
+  isExcluded: number;
   recurrence: Recurrence;
 }
 

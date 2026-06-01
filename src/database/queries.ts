@@ -124,7 +124,8 @@ export const getPendingImportItems = (sessionId: number): ImportItemRecord[] =>
 export const assignImportItem = (
   item: ImportItemRecord,
   status: 'assigned' | 'auto' | 'skipped',
-  categoryId: number | null
+  categoryId: number | null,
+  excluded = false
 ): void => {
   db.withTransactionSync(() => {
     db.runSync(
@@ -137,11 +138,15 @@ export const assignImportItem = (
         [item.session_id]
       )?.account_id ?? null;
       db.runSync(
-        'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence, accountId) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)',
-        [item.date, item.amount, item.description, categoryId, item.type, item.import_hash, 'once', accountId]
+        'INSERT INTO transactions (date, amount, description, categoryId, type, importHash, isManual, recurrence, accountId, isExcluded) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)',
+        [item.date, item.amount, item.description, categoryId, item.type, item.import_hash, 'once', accountId, excluded ? 1 : 0]
       );
     }
   });
+};
+
+export const setTransactionExcluded = (id: number, excluded: boolean): void => {
+  db.runSync('UPDATE transactions SET isExcluded=? WHERE id=?', [excluded ? 1 : 0, id]);
 };
 
 export const getCategories = (): Promise<Category[]> =>
@@ -261,7 +266,7 @@ export const getMonthlyBalance = (month: string): Promise<MonthlyBalance> => {
       COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
       COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expenses
      FROM transactions
-     WHERE strftime('%Y-%m', date) = ? AND isManual = 0`,
+     WHERE strftime('%Y-%m', date) = ? AND isManual = 0 AND isExcluded = 0`,
     [month]
   ) ?? { income: 0, expenses: 0 };
 
@@ -290,6 +295,7 @@ export const getCategoryBalances = (
            ON t.categoryId = c.id
            AND strftime('%Y-%m', t.date) = ?
            AND t.isManual = 0
+           AND t.isExcluded = 0
            AND t.type = ?
          GROUP BY c.id
          HAVING count > 0
@@ -308,6 +314,7 @@ export const getCategoryBalances = (
            ON t.categoryId = c.id
            AND strftime('%Y-%m', t.date) = ?
            AND t.isManual = 0
+           AND t.isExcluded = 0
          GROUP BY c.id
          HAVING count > 0
          ORDER BY total DESC`,
@@ -327,7 +334,7 @@ export const getMonthlyBalancesForRange = (
       COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END), 0) as income,
       COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0) as expenses
     FROM transactions
-    WHERE strftime('%Y-%m', date) >= ? AND strftime('%Y-%m', date) <= ? AND isManual = 0
+    WHERE strftime('%Y-%m', date) >= ? AND strftime('%Y-%m', date) <= ? AND isManual = 0 AND isExcluded = 0
     GROUP BY month
     ORDER BY month`,
     [f, t]

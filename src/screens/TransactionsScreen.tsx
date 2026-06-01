@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { getTransactions, deleteTransaction, getCategories, getAccounts } from '../database/queries';
+import { getTransactions, deleteTransaction, getCategories, getAccounts, setTransactionExcluded } from '../database/queries';
 import { Transaction, Category, Account, TransactionsStackParamList } from '../types';
 
 const DARK = {
@@ -77,10 +77,19 @@ export default function TransactionsScreen() {
     ]);
   };
 
+  const toggleExcluded = (item: Transaction) => {
+    setTransactionExcluded(item.id, item.isExcluded === 0);
+    load();
+  };
+
   const handleLongPress = (item: Transaction) => {
     Alert.alert(item.description, undefined, [
       { text: 'Abbrechen', style: 'cancel' },
       { text: 'Bearbeiten', onPress: () => navigation.navigate('AddTransaction', { transaction: item, defaultManual: false }) },
+      {
+        text: item.isExcluded ? 'In Berechnung einbeziehen' : 'Von Berechnung ausschließen',
+        onPress: () => toggleExcluded(item),
+      },
       { text: 'Löschen', style: 'destructive', onPress: () => confirmDelete(item) },
     ]);
   };
@@ -194,12 +203,15 @@ export default function TransactionsScreen() {
           </Text>
         }
         renderItem={({ item }) => (
-          <TouchableHighlight underlayColor="#333" onLongPress={() => handleLongPress(item)} style={styles.item}>
+          <TouchableHighlight underlayColor="#333" onLongPress={() => handleLongPress(item)} style={[styles.item, item.isExcluded ? styles.itemExcluded : null]}>
             <View style={styles.itemRow}>
-              <View style={[styles.typeDot, { backgroundColor: item.type === 'income' ? DARK.income : DARK.expense }]} />
+              <View style={[styles.typeDot, { backgroundColor: item.isExcluded ? '#555' : (item.type === 'income' ? DARK.income : DARK.expense) }]} />
               <View style={styles.info}>
-                <Text style={styles.desc} numberOfLines={filterCategoryId ? 3 : 1}>{item.description}</Text>
-                <Text style={styles.meta}>
+                <View style={styles.descRow}>
+                  <Text style={[styles.desc, item.isExcluded && styles.descExcluded]} numberOfLines={filterCategoryId ? 3 : 1}>{item.description}</Text>
+                  {!!item.isExcluded && <Text style={styles.excludedBadge}>∅</Text>}
+                </View>
+                <Text style={[styles.meta, item.isExcluded && styles.metaExcluded]}>
                   {item.date} · {item.categoryName ?? 'Ohne Kategorie'}
                   {accounts.length > 1 && item.accountName ? ` · ${item.accountName}` : ''}
                 </Text>
@@ -207,7 +219,7 @@ export default function TransactionsScreen() {
               {accounts.length > 1 && item.accountColor && (
                 <View style={[styles.accountBadge, { backgroundColor: item.accountColor + '33', borderColor: item.accountColor }]} />
               )}
-              <Text style={[styles.amount, { color: item.type === 'income' ? DARK.income : DARK.expense }]}>
+              <Text style={[styles.amount, { color: item.isExcluded ? '#666' : (item.type === 'income' ? DARK.income : DARK.expense) }]}>
                 {item.type === 'expense' ? '-' : '+'}{formatCurrency(item.amount)}
               </Text>
             </View>
@@ -243,11 +255,16 @@ const styles = StyleSheet.create({
   filterSep: { width: 1, height: 20, backgroundColor: '#333', marginHorizontal: 4 },
   empty: { color: DARK.subtext, textAlign: 'center', marginTop: 40 },
   item: { marginHorizontal: 12, marginTop: 8, borderRadius: 10, backgroundColor: DARK.surface, overflow: 'hidden' },
+  itemExcluded: { opacity: 0.5 },
   itemRow: { flexDirection: 'row', alignItems: 'flex-start', padding: 14 },
   typeDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12, marginTop: 3 },
   info: { flex: 1 },
-  desc: { color: DARK.text, fontSize: 14, fontWeight: '500', lineHeight: 20 },
+  descRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  desc: { color: DARK.text, fontSize: 14, fontWeight: '500', lineHeight: 20, flex: 1 },
+  descExcluded: { color: DARK.subtext, textDecorationLine: 'line-through' },
+  excludedBadge: { color: '#888', fontSize: 12, fontWeight: '700' },
   meta: { color: DARK.subtext, fontSize: 12, marginTop: 3 },
+  metaExcluded: { color: '#555' },
   accountBadge: { width: 8, height: 8, borderRadius: 4, borderWidth: 1, marginRight: 6, marginTop: 5 },
   amount: { fontSize: 14, fontWeight: '600', marginLeft: 10 },
 });

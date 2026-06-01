@@ -46,6 +46,7 @@ export default function ImportReviewScreen() {
   const [session, setSession] = useState<ImportSessionRecord | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
+  const [isExcluded, setIsExcluded] = useState(false);
   const [kwChanges, setKwChanges] = useState<Record<number, string>>({});
   const [kwInput, setKwInput] = useState('');
   const [amtRuleChanges, setAmtRuleChanges] = useState<Record<number, string>>({});
@@ -158,8 +159,11 @@ export default function ImportReviewScreen() {
       await updateCategoryAmountRules(Number(id), rules);
     }
 
+    const excluded = isExcluded;
+    setIsExcluded(false);
+
     // Write to DB immediately
-    assignImportItem(current, catId !== null ? 'assigned' : 'skipped', catId);
+    assignImportItem(current, catId !== null ? 'assigned' : 'skipped', catId, excluded);
 
     // Always fetch fresh categories so the next transaction sees updated keywords
     const freshCats = await getCategories();
@@ -188,6 +192,7 @@ export default function ImportReviewScreen() {
     setPending(newPending);
     setLastAutoGain(autoGain);
     setSelectedCatId(null);
+    setIsExcluded(false);
     setShowNewCat(false);
     setNewCatName('');
   };
@@ -283,6 +288,14 @@ export default function ImportReviewScreen() {
           <Text style={styles.txDate}>{current.date}</Text>
         </View>
         <Text style={styles.txDesc}>{current.description}</Text>
+        <TouchableOpacity
+          style={[styles.excludeToggle, isExcluded && styles.excludeToggleActive]}
+          onPress={() => setIsExcluded(v => !v)}
+        >
+          <Text style={[styles.excludeToggleText, isExcluded && styles.excludeToggleTextActive]}>
+            {isExcluded ? '∅ Von Berechnung ausgeschlossen' : '⊙ In Berechnung einbeziehen'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Category picker */}
@@ -446,6 +459,15 @@ const styles = StyleSheet.create({
 
   txCard: { backgroundColor: DARK.surface, borderRadius: 12, padding: 14, marginBottom: 20 },
   txHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  excludeToggle: {
+    marginTop: 10, alignSelf: 'flex-start',
+    paddingVertical: 5, paddingHorizontal: 10,
+    borderRadius: 10, borderWidth: 1, borderColor: '#444',
+    backgroundColor: DARK.card,
+  },
+  excludeToggleActive: { borderColor: '#FF8A65', backgroundColor: '#3A1A0A' },
+  excludeToggleText: { color: DARK.subtext, fontSize: 12 },
+  excludeToggleTextActive: { color: '#FF8A65', fontWeight: '600' },
   typeDot: { width: 10, height: 10, borderRadius: 5 },
   txAmount: { fontSize: 18, fontWeight: '700', flex: 1 },
   txDate: { color: DARK.subtext, fontSize: 12 },

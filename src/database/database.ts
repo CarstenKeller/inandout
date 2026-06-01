@@ -34,6 +34,7 @@ export const initDatabase = (): Promise<void> => {
     try { db.execSync("ALTER TABLE transactions ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'once'"); } catch {}
     try { db.execSync("ALTER TABLE categories ADD COLUMN keywords TEXT NOT NULL DEFAULT ''"); } catch {}
     try { db.execSync("ALTER TABLE categories ADD COLUMN amount_rules TEXT NOT NULL DEFAULT ''"); } catch {}
+    try { db.execSync("ALTER TABLE transactions ADD COLUMN isExcluded INTEGER NOT NULL DEFAULT 0"); } catch {}
 
     db.execSync(`
       CREATE TABLE IF NOT EXISTS accounts (
