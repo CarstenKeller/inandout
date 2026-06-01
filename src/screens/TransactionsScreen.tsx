@@ -123,7 +123,7 @@ export default function TransactionsScreen() {
             ].filter(Boolean).join(' · ')}
           </Text>
           <TouchableOpacity onPress={clearFilters} style={styles.filterBannerClear}>
-            <Text style={styles.filterBannerClearText}>✕ Zurücksetzen</Text>
+            <Text style={styles.filterBannerClearText}>✕ Zurück zur Übersicht</Text>
           </TouchableOpacity>
         </View>
       )}
